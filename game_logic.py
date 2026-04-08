@@ -1,12 +1,12 @@
 """
-Single Jeopardy, Double Jeopardy, Final Jeopardy
-目前只做了single jeopardy
+还没有接入完整的data调试, round3还用了前两个round的逻辑
 """
 
 import json
 import pygame
 import sys
 import LLM
+import random
 import threading
 from shop import Shop
 from login import LoginScreen
@@ -21,6 +21,8 @@ GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 YELLOW = (255, 255, 0)
 ORANGE = (255, 165, 0)
+GOLD = (255, 215, 0)
+DARK_BLUE = (20, 30, 80)
 
 # font size and type
 SMALL = pygame.font.Font(None, 24)
@@ -31,6 +33,8 @@ LARGE = pygame.font.Font(None, 48)
 HEIGHT = 800
 WIDTH = 1000
 
+# Main window UI: BOARD | WAGER | QUESTION | RESULT | SHOP | GAMEOVER | QUIT (modal uses _state_before_quit)
+SHOP_BTN_RECT = pygame.Rect(700, 20, 80, 40)
 
 
 def text_line_break(text: str, word_font: pygame.font.Font, max_width: int) -> list[str]:
@@ -60,6 +64,23 @@ def draw_loading_screen():
     text_pos = text.get_rect(center=(WIDTH//2, HEIGHT//2))
     screen.blit(text, text_pos)
     pygame.display.flip()
+
+STATE_FILE = "stats.json"
+def load_state() -> dict:
+    try:
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return {
+                "best_score": int(data.get("best_score", 0)),
+                "win_streak": int(data.get("win_streak", 0)),
+            }
+    except (FileNotFoundError, ValueError, TypeError):
+        return {"best_score": 0, "win_streak": 0}
+
+def save_state(best_score: int, win_streak: int) -> None:
+    data = {"best_score": best_score, "win_streak": win_streak}
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 # produce questions and check the answer
@@ -135,18 +156,40 @@ class Game:
         if "round1" not in all_data:
             print("Round 1 data doesn't exist.")  # check
             sys.exit(1)
+        if "round2" not in all_data:
+            print("Round 2 data doesn't exist.")
+            sys.exit(1)
+        if "round3" not in all_data:
+            print("Round 3 data doesn't exist.")
+            sys.exit(1)
 
         round1_data = all_data["round1"]
+        round2_data = all_data["round2"]
+        round3_data = all_data["round3"]
 
         categories = []  # categpries shown on the top of the board
         data_1 = {}  # dictionary that contains all questions in round 1
+        data_2 = {}  # dictionary that contains all questions in round 2
+        data_3 = {}  # dictionary that contains all questions in round 3
+        self.data = {"round1": data_1, "round2": data_2, "round3": data_3}
 
         for column, category in enumerate(round1_data):
             categories.append(category.get("name"))
-            questions = category.get("questions")
-            for row, items in enumerate(questions):
+            questions_1 = category.get("questions")
+            values = [items["value"] for items in questions_1]
+            for row, items in enumerate(questions_1):
                 data_1[(column, row)] = {"question_text": items["question"], "options": items["options"], "correct": items["correct"], "value": items["value"]}
-        values = [items["value"] for items in round1_data[0]["questions"]]  # same value in each category
+
+        for column, category in enumerate(round2_data):
+            questions_2 = category.get("questions")
+            for row, items in enumerate(questions_2):
+                data_2[(column, row)] = {"question_text": items["question"], "options": items["options"], "correct": items["correct"], "value": items["value"]}
+
+        for column, category in enumerate(round3_data):
+            questions_3 = category.get("questions")
+            for row, items in enumerate(questions_3):
+                data_3[(column, row)] = {"question_text": items["question"], "options": items["options"], "correct": items["correct"], "value": items["value"]}
+        
 
         self.categories = categories  # list[str]
         self.values = values  # list[int]
@@ -158,48 +201,145 @@ class Game:
         self.board = Board(self.categories, self.values, data_1)
         self.player = Player()
 
-        # other state
+        self.ui_state = "ROUND"  # str
+        self._state_before_quit = None
+        self.go_to_gameover_after_result = False
+
+        self.double_row_round_1, self.double_col_round_1 = random.randint(0, self.rows - 1), random.randint(0, self.cols - 1)
+        self.double_row_round_2_1, self.double_row_round_2_2 = random.sample(range(self.rows), 2)
+        self.double_col_round_2_1, self.double_col_round_2_2 = random.sample(range(self.cols), 2)
+
+        self.current_round = 1
         self.current_question_pos = None
-        self.result_screen = False
         self.result_text = ""
         self.result_color = GREEN
         self.result_timer = 0
-        self.question_screen = False
-        self.game_over = False
         self.option_areas = []
-        self.nextround = False  # turn TRUE when all questions has answered
-        self.selected_option = -1  # which option is chosen
-        self.timer = 5  # count down
+        self.selected_option = -1
+        self.timer = 5
         self.timer_running = False
         self.last_record = 0
-        self.quit_screen = False
         self.quit_buttons_areas = []
+        self.wager_amount = 0
+        self.wager_input = ""   
+        self.wager_error = ""
+        self.wager_input_rect = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 40, 300, 44)    # wager input rectangle
+        self.wager_confirm_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 100, 200, 48)     # wager confirm rectangle
+        self.clear_bonus = False
+        self.next_round = False  # whether to go to the next round
+
+        self.best_score = 0
+        self.win_streak = 0
+        self.gameover_stats_applied = False
 
     def update_timer(self):
         current_time = pygame.time.get_ticks()
-        if self.timer_running and self.question_screen and not self.result_screen and not self.quit_screen:
+        if self.timer_running and self.ui_state == "QUESTION":
             if current_time - self.last_record >= 1000:
                 self.timer -= 1
                 self.last_record = current_time
-        if self.timer < 0 and self.question_screen and not self.result_screen:
+        if self.timer < 0 and self.ui_state == "QUESTION":
             self.check_answer()
 
-    def handle_click(self, position):  # position contains x coordinate and y coordinate
-        x, y = position
-        if y > 100:
-            col = x // self.cell_width
-            if (0 <= col < self.cols):
-                col_y = y - 100
-                row = col_y // self.cell_height - 1
-                if (0 <= row < self.rows):
-                    if not self.board.is_answered(row, col):
+    def handle_click(self, pos, shop: "Shop", shop_btn: pygame.Rect) -> bool:
+        if self.ui_state == "QUIT":
+            for button in self.quit_buttons_areas:
+                if button["area"].collidepoint(pos):
+                    if button["action"] == "quit":
+                        return False
+                    if button["action"] == "cancel":
+                        self.ui_state = self._state_before_quit or "BOARD"
+                        self._state_before_quit = None
+            return True
+
+        if self.ui_state == "BOARD":
+            if shop_btn.collidepoint(pos):
+                self.ui_state = "SHOP"
+                return True
+
+            x, y = pos
+            if y > 100:
+                col = x // self.cell_width
+                if 0 <= col < self.cols:
+                    col_y = y - 100
+                    row = col_y // self.cell_height - 1
+                    if 0 <= row < self.rows and not self.board.is_answered(row, col):
                         self.current_question_pos = (row, col)
-                        self.question_screen = True
                         self.selected_option = -1
-                        self.result_screen = False
+                        if self.current_round == 2:
+                            if row == self.double_row_round_2_1 and col == self.double_col_round_2_1 or (row == self.double_row_round_2_2 and col == self.double_col_round_2_2):
+                                self.ui_state = "WAGER"
+                                self.wager_amount = 0
+                                self.wager_input = ""
+                                self.wager_error = ""
+                                return True
+                        elif self.current_round == 1:
+                            if row == self.double_row_round_1 and col == self.double_col_round_1:
+                                self.ui_state = "WAGER"
+                                self.wager_amount = 0
+                                self.wager_input = ""
+                                self.wager_error = ""
+                                return True
+                        elif self.current_round == 3:
+                            self.ui_state = "WAGER"
+                            self.wager_amount = 0
+                            self.wager_input = ""
+                            self.wager_error = ""
+                            return True
+                        self.ui_state = "QUESTION"
                         self.timer = 5
                         self.timer_running = True
                         self.last_record = pygame.time.get_ticks()
+                        return True
+            return True
+
+        if self.ui_state == "WAGER":
+            if self.wager_confirm_rect.collidepoint(pos):
+                self.try_confirm_wager()
+            return True
+
+        if self.ui_state == "SHOP":
+            react = shop.handle_click(pos)
+            if react == "EXIT":
+                self.ui_state = "BOARD"
+            return True
+
+        if self.ui_state == "QUESTION":
+            for i, region in enumerate(self.option_areas):
+                if region.collidepoint(pos):
+                    self.selected_option = i
+                    self.check_answer()
+                    return True
+        return True
+
+    def try_confirm_wager(self) -> bool:
+        if self.current_question_pos is None:
+            return False
+        row, col = self.current_question_pos
+        max_w = max(self.player.score, self.values[row])
+        min_w = 1
+        raw = self.wager_input.strip()
+        if not raw:
+            self.wager_error = "Please input the wager amount"
+            print(self.wager_error)
+            return False
+        try:
+            val = int(raw)
+        except ValueError:
+            self.wager_error = "Please input a valid integer"
+            print(self.wager_error)
+            return False
+        if not (min_w <= val <= max_w):
+            self.wager_error = f"The wager must be between {min_w} and {max_w}"
+            print(self.wager_error)
+            return False
+        self.wager_amount = val
+        self.wager_error = ""
+        self.ui_state = "QUESTION"
+        self.timer = 5
+        self.timer_running = True
+        self.last_record = pygame.time.get_ticks()
+        return True
 
     def check_answer(self):
         if self.current_question_pos is None:
@@ -210,60 +350,88 @@ class Game:
 
         row, col = self.current_question_pos
         question = self.board.get_question(row, col)
+        if (
+            (self.current_round == 1 and row == self.double_row_round_1 and col == self.double_col_round_1)
+            or (
+                self.current_round == 2
+                and (
+                    row == self.double_row_round_2_1 and col == self.double_col_round_2_1
+                    or row == self.double_row_round_2_2 and col == self.double_col_round_2_2
+                )
+            )
+            or self.current_round == 3
+        ):
+            is_double_daily = True
+        else:
+            is_double_daily = False
+        if is_double_daily:
+            pts = self.wager_amount
+        else:
+            pts = question.value
 
         correct = question.check_answer(self.selected_option)
         if correct:
-            self.player.add_score(question.value)
-            self.result_text = f"Correct! +{question.value}"
+            self.player.add_score(pts)
+            self.result_text = f"Correct! +{pts}"
             self.result_color = GREEN
         else:
-            self.player.subtract_score(question.value)
+            self.player.subtract_score(pts)
             show_correct_answer = question.options[question.correct]
-            self.result_text = f"Wrong! -{question.value} Correct answer: {show_correct_answer}"
+            self.result_text = f"Wrong! -{pts} Correct answer: {show_correct_answer}"
             self.result_color = RED
+            if self.player.score == 0:
+                self.result_text = "Your score is 0."
 
         self.board.mark_answered(row, col)
-        self.result_screen = True
+        self.ui_state = "RESULT"
         self.result_timer = 180
+        self.next_round = False
 
-        if self.board.all_answered():
-            self.game_over = True
-            self.result_text = f"Next Round! Your score: {self.player.score}"
-
-    def draw(self):
-        screen.fill(BLACK)
-
-        score_text = LARGE.render(f"Score: {self.player.score}", True, YELLOW)
-        screen.blit(score_text, (20, 20))
-
-        if self.game_over:
-            self.draw_game_over_screen()
-        elif self.question_screen:
-            if self.result_screen and self.result_timer > 0:
-                self.draw_result()
-                self.result_timer -= 1
-                if self.result_timer <= 0:
-                    self.question_screen = False
-                    self.result_screen = False
-                    self.current_question_pos = None
-            else:
-                self.draw_question_screen()
+        if self.player.score == 0:
+            self.go_to_gameover_after_result = True
+        elif self.board.all_answered() and self.current_round == 3:
+            self.go_to_gameover_after_result = True
         else:
-            self.draw_board_screen()
+            self.go_to_gameover_after_result = False
 
-        if self.quit_screen:
-            self.draw_quit_screen()
+        if self.board.all_answered() and self.current_round < 3 and self.player.score > 0:
+            self.next_round = True
 
-        if self.question_screen and not self.result_screen and self.timer_running:
-            timer_color = RED if self.timer <= 3 else WHITE
-            timer_text = LARGE.render(f"Time: {self.timer}", True, timer_color)
-            timer_text_pos = timer_text.get_rect(topright=(WIDTH - 400, 20))
-            screen.blit(timer_text, timer_text_pos)
+    def ui_state_for_drawing(self) -> str:
+        if self.ui_state == "QUIT":
+            return self._state_before_quit or "BOARD"
+        return self.ui_state
 
-        pygame.display.flip()
+    def draw_wager_screen(self):
+        overlay_wager_screen = pygame.Surface((WIDTH, HEIGHT))
+        overlay_wager_screen.set_alpha(0)
+        overlay_wager_screen.fill(GOLD)
+        screen.blit(overlay_wager_screen, (0, 0))
 
-    def start_screen(self):
-        start_screen = pygame.Surface((WIDTH, HEIGHT))
+        title = LARGE.render("Daily Double — Input the wager", True, WHITE)
+        screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 140)))
+
+        if self.current_question_pos:
+            row, col = self.current_question_pos
+            max_w = max(self.player.score, self.values[row])
+            hint = SMALL.render(f"Valid range: 1 —— {max_w}(input with number, enter or click CONFIRM)", True, WHITE)
+            screen.blit(hint, hint.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 95)))
+
+        pygame.draw.rect(screen, WHITE, self.wager_input_rect, 2)
+        inner = self.wager_input_rect.inflate(-8, -8)
+        pygame.draw.rect(screen, BLACK, inner)
+        display = self.wager_input if self.wager_input else " "
+        display_text = MEDIUM.render(display, True, WHITE)
+        screen.blit(display_text, (self.wager_input_rect.x + 8, self.wager_input_rect.centery - display_text.get_height() // 2))
+
+        if self.wager_error:
+            error = MEDIUM.render(self.wager_error, True, RED)
+            screen.blit(error, error.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
+
+        pygame.draw.rect(screen, GREEN, self.wager_confirm_rect)
+        pygame.draw.rect(screen, WHITE, self.wager_confirm_rect, 2)
+        c = MEDIUM.render("CONFIRM", True, BLACK)
+        screen.blit(c, c.get_rect(center=self.wager_confirm_rect.center))
 
     def draw_board_screen(self):
         # category text
@@ -329,7 +497,23 @@ class Game:
             option_text_pos = option_text.get_rect(center=rectangle.center)
             screen.blit(option_text, option_text_pos)
 
-        value_text = MEDIUM.render(f"Value: {question.value}", True, YELLOW)
+        if (
+            (self.current_round == 1 and row == self.double_row_round_1 and col == self.double_col_round_1)
+            or (
+                self.current_round == 2
+                and (
+                    row == self.double_row_round_2_1 and col == self.double_col_round_2_1
+                    or row == self.double_row_round_2_2 and col == self.double_col_round_2_2
+                )
+            )
+            or self.current_round == 3
+        ):
+            is_daily_doubled = True
+        else:
+            is_daily_doubled = False
+        new_value = self.wager_amount if is_daily_doubled else question.value
+        daily_double_suffix = " (Daily Double!)" if is_daily_doubled else ""
+        value_text = MEDIUM.render(f"Value: {new_value}{daily_double_suffix}", True, YELLOW)
         value_text_pos = value_text.get_rect(center=(WIDTH // 2, 210))
         screen.blit(value_text, value_text_pos)
 
@@ -348,22 +532,50 @@ class Game:
         timer_text_pos = timer_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 150))
         screen.blit(timer_text, timer_text_pos)
 
+    def draw_round_screen(self):
+        overlay_gameover_screen = pygame.Surface((WIDTH // 2, HEIGHT // 2))
+        overlay_gameover_screen.set_alpha(0)
+        overlay_gameover_screen.fill(BLACK)
+        screen.blit(overlay_gameover_screen, (0, 0))
+        round_text = LARGE.render(f"Round {self.current_round}", True, WHITE)
+        round_text_pos = round_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+        screen.blit(round_text, round_text_pos)
+
+        show_score_text = MEDIUM.render(f"Your score is: {self.player.score}", True, YELLOW)
+        show_score_text_pos = show_score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 40))
+        screen.blit(show_score_text, show_score_text_pos)
+
+        continue_text = MEDIUM.render("Press any key to continue", True, WHITE)
+        continue_text_pos = continue_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
+        screen.blit(continue_text, continue_text_pos)
+
     def draw_game_over_screen(self):
         overlay_gameover_screen = pygame.Surface((WIDTH // 2, HEIGHT // 2))
-        overlay_gameover_screen.set_alpha(200)
+        overlay_gameover_screen.set_alpha(0)
         overlay_gameover_screen.fill(BLACK)
         screen.blit(overlay_gameover_screen, (0, 0))
 
-        game_over_text = LARGE.render("Game Over!", True, RED)
+        if self.player.score == 0:
+            game_over_text = LARGE.render("You lose!", True, RED)
+            score_text = LARGE.render(f"Game Over!", True, YELLOW)
+        else:
+            game_over_text = LARGE.render("You win!", True, GREEN)
+            score_text = LARGE.render(f"Final Score: {self.player.score}", True, YELLOW)
+        score_text_pos = score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
         game_over_text_pos = game_over_text.get_rect(center=(WIDTH//2, HEIGHT//2 - 60))
         screen.blit(game_over_text, game_over_text_pos)
-
-        score_text = LARGE.render(f"Final Score: {self.player.score}", True, YELLOW)
-        score_text_pos = score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
         screen.blit(score_text, score_text_pos)
 
-        restart_text = MEDIUM.render("Press ESC to quit", True, WHITE)
-        restart_text_pos = restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
+        best_text = MEDIUM.render(f"Best Score: {self.best_score}", True, WHITE)
+        streak_text = MEDIUM.render(f"Current Win Streak: {self.win_streak}", True, WHITE)
+        screen.blit(best_text, best_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 40)))
+        screen.blit(streak_text, streak_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 70)))
+
+        quit_text = MEDIUM.render("Press ESC to quit", True, WHITE)
+        quit_text_pos = quit_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 80))
+        screen.blit(quit_text, quit_text_pos)
+        restart_text = MEDIUM.render("Press ENTER to restart", True, WHITE)
+        restart_text_pos = restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 100))
         screen.blit(restart_text, restart_text_pos)
 
     def draw_quit_screen(self):
@@ -399,21 +611,15 @@ class Game:
 
         self.quit_buttons_areas = [{"area": yes_button_pos, "action": "quit"}, {"area": no_button_pos, "action": "cancel"}]
 
-    def run(self):
-        clock = pygame.time.Clock()
-        fps = 60
-        running = True
-        while running:
-            clock.tick(fps)
-            running = self.control_events()
-            self.draw()
-        pygame.quit()
-        sys.exit()
 
 def run_game():
     global screen
     result = {}
     threading.Thread(target=generate_questions, args=(result,), daemon=True).start()
+    
+    state = load_state()
+    best_score = state["best_score"]
+    win_streak = state["win_streak"]
 
     # 1. Run Login Module
     # This calls the run() method from your login.py
@@ -426,13 +632,11 @@ def run_game():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('Jeopardy!')
     screen.fill(BLACK)
-    shop_btn = pygame.Rect(700, 20, 80, 40)
     pygame.display.flip()
     
     # Initialize Game with data from Login
     game = None
     shop = None
-    state = "BOARD" # States: BOARD, QUESTION, SHOP, GAMEOVER
     running = True
 
     while running:
@@ -450,82 +654,114 @@ def run_game():
                 game = Game(result["all_data"])
                 game.player.name = user_name
                 shop = Shop(screen, game.player)
+                game.best_score = best_score
+                game.win_streak = win_streak
 
         screen.fill((0, 0, 0))
-        
-        # --- LOGIC & DRAWING ---
-        if state == "BOARD":
-            screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW),(20, 20))
+        base = game.ui_state_for_drawing()
+
+        if base == "BOARD":
+            screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW), (20, 20))
             game.draw_board_screen()
-            # Draw a small Shop button on the board
-            shop_btn = pygame.Rect(700, 20, 80, 40)
-            pygame.draw.rect(screen, (128, 0, 128), shop_btn)
-            screen.blit(pygame.font.Font(None, 24).render("SHOP", True, (255,255,255)), (715, 30))
-            
-        elif state == "QUESTION":
+            pygame.draw.rect(screen, (128, 0, 128), SHOP_BTN_RECT)
+            screen.blit(pygame.font.Font(None, 24).render("SHOP", True, (255, 255, 255)), (715, 30))
+        elif base == "WAGER":
+            screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW), (20, 20))
+            game.draw_wager_screen()
+        elif base == "QUESTION":
             game.update_timer()
-            screen.blit(
-                LARGE.render(f"Score: {game.player.score}", True, YELLOW),
-                (20, 20),
-            )
-            if game.timer_running and game.question_screen and not game.result_screen:
+            screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW), (20, 20))
+            if game.timer_running:
                 tc = RED if game.timer <= 3 else WHITE
                 ts = LARGE.render(f"Time: {game.timer}", True, tc)
                 screen.blit(ts, ts.get_rect(topright=(WIDTH - 400, 20)))
-            if game.result_screen and game.result_timer > 0:
+            game.draw_question_screen()
+        elif base == "RESULT":
+            screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW), (20, 20))
+            if game.result_timer > 0:
                 game.draw_result()
                 game.result_timer -= 1
                 if game.result_timer <= 0:
-                    game.question_screen = False
-                    game.result_screen = False
                     game.current_question_pos = None
-                    state = "GAMEOVER" if game.game_over else "BOARD"
-            else:
-                game.draw_question_screen()
-            
-        elif state == "SHOP":
+                    if game.next_round:
+                        game.next_round = False
+                        game.current_round += 1
+                        game.board = Board(
+                            game.categories,
+                            game.values,
+                            game.data[f"round{game.current_round}"],
+                        )
+                        game.double_row_round_1 = random.randint(0, game.rows - 1)
+                        game.double_col_round_1 = random.randint(0, game.cols - 1)
+                        game.double_row_round_2_1, game.double_row_round_2_2 = random.sample(range(game.rows), 2)
+                        game.double_col_round_2_1, game.double_col_round_2_2 = random.sample(range(game.cols), 2)
+                        game.clear_bonus = False
+                        game.ui_state = "ROUND"
+                    elif game.go_to_gameover_after_result:
+                        if not game.gameover_stats_applied:
+                            best_score = max(best_score, game.player.score)
+                            if game.player.score > 0:
+                                win_streak += 1
+                            else:
+                                win_streak = 0
+                            game.best_score = best_score
+                            game.win_streak = win_streak
+                            save_state(best_score, win_streak)
+                            game.gameover_stats_applied = True  # prevent double application of state
+                        game.ui_state = "GAMEOVER"
+                    else:
+                        game.ui_state = "BOARD"
+        elif base == "SHOP":
             shop.draw()
-
-        if game.quit_screen:
-            game.draw_quit_screen()
-
-        # Check for Completion Reward
-        if game.board.all_answered() and not game.game_over:
-            game.player.coins += 1000 # Reward 1000 coins for clearing
-            game.game_over = True
-            state = "GAMEOVER"
-        elif state == "GAMEOVER":
+        elif base == "ROUND":
+            game.draw_round_screen()            
+        elif base == "GAMEOVER":
             game.draw_game_over_screen()
 
-        # --- EVENT HANDLING ---
+        if game.board.all_answered() and not game.clear_bonus:
+            game.player.coins += 1000
+            game.clear_bonus = True
+
+        if game.ui_state == "QUIT":
+            game.draw_quit_screen()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    game.quit_screen = True
+            elif event.type == pygame.KEYDOWN:
+                if game.ui_state == "ROUND":
+                    game.ui_state = "BOARD"
                     continue
-
-            if game.quit_screen:
-                if event.type == pygame.KEYDOWN:
+                if game.ui_state == "GAMEOVER":
+                    if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                        result = {}
+                        threading.Thread(target=generate_questions, args=(result,), daemon=True).start()
+                        game = None
+                        shop = None
+                        continue
+                    elif event.key == pygame.K_ESCAPE:
+                        running = False
+                    continue
+                if event.key == pygame.K_ESCAPE:  # special
+                    if game.ui_state != "QUIT":
+                        game._state_before_quit = game.ui_state
+                        game.ui_state = "QUIT"
+                elif game.ui_state == "QUIT":
                     if event.key == pygame.K_y:
                         running = False
                     elif event.key == pygame.K_n:
-                        game.quit_screen = False
-                        continue
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    for button in game.quit_buttons_areas:
-                        if button["area"].collidepoint(event.pos):
-                            if button["action"] == "quit":
-                                running = False          
-                            elif button["action"] == "cancel":
-                                game.quit_screen = False
-                            break
-                    continue
-
-            if not game.quit_screen:
-                if event.type == pygame.KEYDOWN and state == "QUESTION" and not game.result_screen:
+                        game.ui_state = game._state_before_quit or "BOARD"
+                        game._state_before_quit = None
+                elif game.ui_state == "WAGER":
+                    if event.key == pygame.K_BACKSPACE:
+                        game.wager_input = game.wager_input[:-1]
+                        game.wager_error = ""
+                    elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                        game.try_confirm_wager()
+                    elif event.unicode and event.unicode.isdigit() and len(game.wager_input) < 10:
+                        game.wager_input += event.unicode
+                        game.wager_error = ""
+                elif game.ui_state == "QUESTION":
                     if event.key == pygame.K_1:
                         game.selected_option = 0
                         game.check_answer()
@@ -535,24 +771,14 @@ def run_game():
                     elif event.key == pygame.K_3:
                         game.selected_option = 2
                         game.check_answer()
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if state == "BOARD":
-                        if shop_btn.collidepoint(event.pos):
-                            state = "SHOP"
-                        else:
-                            game.handle_click(event.pos)
-                            if game.question_screen:
-                                state = "QUESTION"
-                    elif state == "SHOP":
-                        result_shop = shop.handle_click(event.pos)
-                        if result_shop == "EXIT":
-                            state = "BOARD"
-                    elif state == "QUESTION" and not game.result_screen:
-                        for i, region in enumerate(game.option_areas):
-                            if region.collidepoint(event.pos):
-                                game.selected_option = i
-                                game.check_answer()
-                                break
+                    elif event.key == pygame.K_4:
+                        game.selected_option = 3
+                        game.check_answer()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if game.ui_state == "ROUND":
+                    game.ui_state = "BOARD"
+                if not game.handle_click(event.pos, shop, SHOP_BTN_RECT):
+                    running = False
 
         pygame.display.flip()
         clock.tick(60)
