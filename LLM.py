@@ -68,5 +68,5 @@ prompt = """\
     """
 
 if __name__ == "__main__":
-    data = q_generate(prompt1)
+    data = q_generate(prompt)
     print(data)

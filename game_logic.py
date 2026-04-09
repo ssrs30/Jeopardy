@@ -1,7 +1,3 @@
-"""
-还没有接入完整的data调试, round3还用了前两个round的逻辑
-"""
-
 import json
 import pygame
 import sys
@@ -50,7 +46,7 @@ def text_line_break(text: str, word_font: pygame.font.Font, max_width: int) -> l
     return lines
 
 def generate_questions(result: dict) -> None:
-    data = LLM.q_generate(LLM.prompt1)
+    data = LLM.q_generate(LLM.prompt)
     start = data.find("{")
     end = data.rfind("}") + 1
     if start == -1 or end == 0:
@@ -176,12 +172,13 @@ class Game:
         for column, category in enumerate(round1_data):
             categories.append(category.get("name"))
             questions_1 = category.get("questions")
-            values = [items["value"] for items in questions_1]
+            values_1 = [items["value"] for items in questions_1]
             for row, items in enumerate(questions_1):
                 data_1[(column, row)] = {"question_text": items["question"], "options": items["options"], "correct": items["correct"], "value": items["value"]}
 
         for column, category in enumerate(round2_data):
             questions_2 = category.get("questions")
+            values_2 = [items["value"] for items in questions_2]
             for row, items in enumerate(questions_2):
                 data_2[(column, row)] = {"question_text": items["question"], "options": items["options"], "correct": items["correct"], "value": items["value"]}
 
@@ -192,8 +189,8 @@ class Game:
         
 
         self.categories = categories  # list[str]
-        self.values = values  # list[int]
-        self.rows = len(values)  # int
+        self.values = values_1
+        self.rows = len(round1_data[0]["questions"])  # int
         self.cols = len(categories)  # int
         self.cell_width = WIDTH // self.cols  # int
         self.cell_height = (HEIGHT - 100) // (self.rows + 1)  # int
@@ -316,7 +313,8 @@ class Game:
         if self.current_question_pos is None:
             return False
         row, col = self.current_question_pos
-        max_w = max(self.player.score, self.values[row])
+        question = self.board.get_question(row, col)
+        max_w = max(self.player.score, question.values)
         min_w = 1
         raw = self.wager_input.strip()
         if not raw:
@@ -413,7 +411,8 @@ class Game:
 
         if self.current_question_pos:
             row, col = self.current_question_pos
-            max_w = max(self.player.score, self.values[row])
+            question = self.board.get_question(row, col)
+            max_w = max(self.player.score, question.value)
             hint = SMALL.render(f"Valid range: 1 —— {max_w}(input with number, enter or click CONFIRM)", True, WHITE)
             screen.blit(hint, hint.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 95)))
 
@@ -455,7 +454,8 @@ class Game:
                     color = BLUE
                 pygame.draw.rect(screen, color, rectangle)
                 pygame.draw.rect(screen, WHITE, rectangle, 2)
-                value_text = MEDIUM.render(str(self.values[row]), True, WHITE)
+                question = self.board.get_question(row, col)
+                value_text = MEDIUM.render(str(question.value), True, WHITE)
                 value_text_pos = value_text.get_rect(center=rectangle.center)
                 screen.blit(value_text, value_text_pos)
 
@@ -777,6 +777,7 @@ def run_game():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if game.ui_state == "ROUND":
                     game.ui_state = "BOARD"
+                    continue
                 if not game.handle_click(event.pos, shop, SHOP_BTN_RECT):
                     running = False
 
