@@ -1,6 +1,8 @@
 import pygame
 import pygame.freetype
+import sys
 from pathlib import Path
+from pause import pause_window
 
 pygame.init()
 pygame.font.init()
@@ -17,6 +19,7 @@ class Character:
         c2_path = current_dir / "Game Assets" / "Characters" / "c2.png"
         c3_path = current_dir / "Game Assets" / "Characters" / "c3.png"
         c4_path = current_dir / "Game Assets" / "Characters" / "c4.png"
+        self.avatar_paths = [str(c1_path), str(c2_path), str(c3_path), str(c4_path)]
         frame_path = current_dir / "Game Assets" / "frame_char.png"
         frame_pressed_path = current_dir / "Game Assets" / "frame_char_pressed.png"
         frame_select_path = current_dir / "Game Assets" / "frame_select.png"
@@ -73,10 +76,17 @@ class Character:
 
         self.pos = (300, 450)
         self.rect = self.frame.get_rect(topleft = self.pos)
+        self.selected_idx = 0
 
         self.music_started = False
+        self.current_frame1 = self.frame
+        self.current_frame2 = self.frame
+        self.current_frame3 = self.frame
+        self.current_frame4 = self.frame
+        self.current_frame_continue = self.frame_continue
+        self.current_continue = self.continue_text
 
-    def update(self, events) -> int:
+    def update(self, events) -> str:
         if not self.music_started:
             pygame.mixer.music.set_volume(0.3)
             pygame.mixer.music.load(self.menu_BGM_path)
@@ -122,22 +132,31 @@ class Character:
                     self.button_sound.play()
                     self.pos = (300, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
+                    self.selected_idx = 0
                 elif self.frame2_rect.collidepoint(mouse_pos):
                     self.button_sound.play()
                     self.pos = (460, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
+                    self.selected_idx = 1
                 elif self.frame3_rect.collidepoint(mouse_pos):
                     self.button_sound.play()
                     self.pos = (640, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
+                    self.selected_idx = 2
                 elif self.frame4_rect.collidepoint(mouse_pos):
                     self.button_sound.play()
                     self.pos = (800, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
+                    self.selected_idx = 3
+
+                if self.frame_continue_rect.collidepoint(event.pos):
+                    self.button_sound.play()
+                    if self.text.strip():
+                        return "START"
                     
                 if self.quit_button_rect.collidepoint(event.pos):
                     self.button_sound.play()
-                    return 2
+                    return "QUIT"
 
             if event.type == pygame.KEYDOWN and self.active:
                 if event.key == pygame.K_BACKSPACE:
@@ -145,7 +164,7 @@ class Character:
                 else:
                     if len(self.text) <= 20:
                         self.text += event.unicode
-        return 3
+        return "CHAR"
         
 
     def draw(self):
@@ -170,6 +189,47 @@ class Character:
         self.screen.blit(self.c4, (825, 490))
         self.screen.blit(self.current_frame_continue, self.frame_continue_rect)
         self.screen.blit(self.current_continue, self.continue_rect)
+
+    def run(self):
+        confirm_quit = False
+        modal = pause_window(self.screen)
+        while True:
+            events = pygame.event.get()
+            if confirm_quit:
+                for event in events:
+                    choice = modal.update([event], 3)
+                    if choice == 0:
+                        pygame.quit()
+                        sys.exit()
+                    if choice == 3:
+                        confirm_quit = False
+                self.draw()
+                modal.draw()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+
+            for event in events:
+                if event.type == pygame.QUIT:
+                    confirm_quit = True
+                    break
+
+            if confirm_quit:
+                self.draw()
+                modal.draw()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+
+            action = self.update(events)
+            if action == "QUIT":
+                confirm_quit = True
+            elif action == "START":
+                return self.text.strip(), self.avatar_paths[self.selected_idx]
+
+            self.draw()
+            pygame.display.flip()
+            self.clock.tick(60)
 
 if __name__ == "__main__":
     char = Character()

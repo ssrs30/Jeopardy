@@ -1,6 +1,7 @@
 import pygame
 import sys
 import os
+from pathlib import Path
 
 pygame.init()
 
@@ -32,6 +33,20 @@ class LoginScreen:
             os.makedirs(self.avatar_folder)
         
         self.load_avatars()
+        self.confirm_quit = False
+        current_dir = Path(__file__).parent
+        assets_dir = current_dir / "Game Assets"
+        self.dark_surface = pygame.Surface((WIDTH, HEIGHT))
+        self.dark_surface.fill((0, 0, 0))
+        self.dark_surface.set_alpha(128)
+        self.quit_frame = pygame.image.load(str(assets_dir / "quit_frame.png")).convert_alpha()
+        self.quitting = pygame.image.load(str(assets_dir / "QUITTING.png")).convert_alpha()
+        self.button = pygame.image.load(str(assets_dir / "button.png")).convert_alpha()
+        self.button_pressed = pygame.image.load(str(assets_dir / "button_pressed.png")).convert_alpha()
+        self.yes = pygame.image.load(str(assets_dir / "YES.png")).convert_alpha()
+        self.no = pygame.image.load(str(assets_dir / "NO.png")).convert_alpha()
+        self.buttonL_rect = self.button.get_rect(center=(WIDTH // 2 - 100, HEIGHT // 2 + 70))
+        self.buttonR_rect = self.button.get_rect(center=(WIDTH // 2 + 100, HEIGHT // 2 + 70))
 
     def load_avatars(self):
         """Scan the folder and pre-load images as thumbnails"""
@@ -108,8 +123,22 @@ class LoginScreen:
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+                    self.confirm_quit = True
+                
+                if event.type == pygame.KEYDOWN and self.confirm_quit:
+                    if event.key == pygame.K_y:
+                        pygame.quit()
+                        sys.exit()
+                    if event.key in (pygame.K_n, pygame.K_ESCAPE):
+                        self.confirm_quit = False
+                
+                if event.type == pygame.MOUSEBUTTONDOWN and self.confirm_quit:
+                    if self.buttonL_rect.collidepoint(event.pos):
+                        pygame.quit()
+                        sys.exit()
+                    if self.buttonR_rect.collidepoint(event.pos):
+                        self.confirm_quit = False
+                    continue
                 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     # Click input box
@@ -141,8 +170,25 @@ class LoginScreen:
                         if len(self.username) < 12:
                             self.username += event.unicode
 
+            if self.confirm_quit:
+                mouse_pos = pygame.mouse.get_pos()
+                current_left = self.button_pressed if self.buttonL_rect.collidepoint(mouse_pos) else self.button
+                current_right = self.button_pressed if self.buttonR_rect.collidepoint(mouse_pos) else self.button
+                self.screen_overlay()
+                screen.blit(current_left, self.buttonL_rect)
+                screen.blit(current_right, self.buttonR_rect)
+                screen.blit(self.yes, self.yes.get_rect(center=self.buttonL_rect.center))
+                screen.blit(self.no, self.no.get_rect(center=self.buttonR_rect.center))
+
             pygame.display.flip()
             clock.tick(60)
+
+    def screen_overlay(self):
+        screen.blit(self.dark_surface, (0, 0))
+        frame_rect = self.quit_frame.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+        quitting_rect = self.quitting.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 40))
+        screen.blit(self.quit_frame, frame_rect)
+        screen.blit(self.quitting, quitting_rect)
 
 if __name__ == "__main__":
     login = LoginScreen()

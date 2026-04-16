@@ -33,6 +33,8 @@ class pause_window:
         self.button_pressed = pygame.image.load(str(button_pressed_path)).convert_alpha()
         self.buttonL_rect = self.button.get_rect(topleft = (360, 400))
         self.buttonR_rect = self.button.get_rect(topleft = (640, 400))
+        self.current_buttonL = self.button
+        self.current_buttonR = self.button
 
         self.quit_button = pygame.image.load(str(quit_button_path)).convert_alpha()
         self.quit_button_rect = self.quit_button.get_rect(topleft = (10, 10))

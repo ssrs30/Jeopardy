@@ -1,15 +1,32 @@
 """LLM Questions programme"""
 
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 import json
 
-# Load the API key environment variable from the .env file.
-load_dotenv()
-AZURE_API_KEY = os.getenv("AZURE_API_KEY")
-assert AZURE_API_KEY is not None
+
+def _load_api_key() -> str:
+    """
+    Load API key from environment first, then from local env files.
+    Supported files: API.env, .env (in the same directory as this file).
+    """
+    base_dir = Path(__file__).resolve().parent
+    load_dotenv(base_dir / "API.env")
+    load_dotenv(base_dir / ".env")
+
+    api_key = os.getenv("AZURE_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "AZURE_API_KEY not found. Please set it in system environment, "
+            "or add it to API.env/.env in the project directory."
+        )
+    return api_key
+
+
+AZURE_API_KEY = _load_api_key()
 
 # EUS2 uses an OpenAI-compatible /v1 endpoint
 EUS2_BASE_URL = "https://cuhk-apip.azure-api.net/openai-eus2/openai/v1"

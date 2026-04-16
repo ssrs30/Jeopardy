@@ -5,7 +5,9 @@ import LLM
 import random
 import threading
 from shop import Shop
-from login import LoginScreen
+from home import Homepage
+from pause import pause_window
+from char import Character
 
 
 # colors that can be used in UI
@@ -29,8 +31,25 @@ LARGE = pygame.font.Font(None, 48)
 HEIGHT = 800
 WIDTH = 1000
 
-# Main window UI: BOARD | WAGER | QUESTION | RESULT | SHOP | GAMEOVER | QUIT (modal uses _state_before_quit)
+# Main window UI: BOARD | WAGER | QUESTION | RESULT | SHOP | GAMEOVER
 SHOP_BTN_RECT = pygame.Rect(700, 20, 80, 40)
+
+
+def run_homepage(screen: pygame.Surface, clock: pygame.time.Clock) -> bool:
+    """Run start menu, return True if user starts game."""
+    homepage = Homepage(screen)
+    while True:
+        events = pygame.event.get()
+
+        action = homepage.update(events)
+        homepage.draw()
+        pygame.display.flip()
+        clock.tick(60)
+
+        if action == 3:  # start
+            return True
+        if action == 2:  # quit
+            return False
 
 
 def text_line_break(text: str, word_font: pygame.font.Font, max_width: int) -> list[str]:
@@ -159,9 +178,9 @@ class Game:
             print("Round 3 data doesn't exist.")
             sys.exit(1)
 
-        round1_data = all_data["round1"]
-        round2_data = all_data["round2"]
-        round3_data = all_data["round3"]
+        round1_data = self._normalize_round_data(all_data["round1"])
+        round2_data = self._normalize_round_data(all_data["round2"])
+        round3_data = self._normalize_round_data(all_data["round3"])
 
         categories = []  # categpries shown on the top of the board
         data_1 = {}  # dictionary that contains all questions in round 1
@@ -199,7 +218,6 @@ class Game:
         self.player = Player()
 
         self.ui_state = "ROUND"  # str
-        self._state_before_quit = None
         self.go_to_gameover_after_result = False
 
         self.double_row_round_1, self.double_col_round_1 = random.randint(0, self.rows - 1), random.randint(0, self.cols - 1)
@@ -216,7 +234,6 @@ class Game:
         self.timer = 5
         self.timer_running = False
         self.last_record = 0
-        self.quit_buttons_areas = []
         self.wager_amount = 0
         self.wager_input = ""   
         self.wager_error = ""
@@ -224,10 +241,21 @@ class Game:
         self.wager_confirm_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 100, 200, 48)     # wager confirm rectangle
         self.clear_bonus = False
         self.next_round = False  # whether to go to the next round
-
         self.best_score = 0
         self.win_streak = 0
         self.gameover_stats_applied = False
+
+    @staticmethod
+    def _normalize_round_data(round_data):
+        """
+        Normalize round data to list[dict].
+        Some models return final round as a single dict, not a list.
+        """
+        if isinstance(round_data, dict):
+            return [round_data]
+        if isinstance(round_data, list):
+            return round_data
+        raise ValueError("Invalid round data format from AI response.")
 
     def update_timer(self):
         current_time = pygame.time.get_ticks()
@@ -239,16 +267,6 @@ class Game:
             self.check_answer()
 
     def handle_click(self, pos, shop: "Shop", shop_btn: pygame.Rect) -> bool:
-        if self.ui_state == "QUIT":
-            for button in self.quit_buttons_areas:
-                if button["area"].collidepoint(pos):
-                    if button["action"] == "quit":
-                        return False
-                    if button["action"] == "cancel":
-                        self.ui_state = self._state_before_quit or "BOARD"
-                        self._state_before_quit = None
-            return True
-
         if self.ui_state == "BOARD":
             if shop_btn.collidepoint(pos):
                 self.ui_state = "SHOP"
@@ -314,7 +332,7 @@ class Game:
             return False
         row, col = self.current_question_pos
         question = self.board.get_question(row, col)
-        max_w = max(self.player.score, question.values)
+        max_w = max(self.player.score, question.value)
         min_w = 1
         raw = self.wager_input.strip()
         if not raw:
@@ -396,8 +414,6 @@ class Game:
             self.next_round = True
 
     def ui_state_for_drawing(self) -> str:
-        if self.ui_state == "QUIT":
-            return self._state_before_quit or "BOARD"
         return self.ui_state
 
     def draw_wager_screen(self):
@@ -578,40 +594,6 @@ class Game:
         restart_text_pos = restart_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 100))
         screen.blit(restart_text, restart_text_pos)
 
-    def draw_quit_screen(self):
-        overlay_quit_screen = pygame.Surface((WIDTH, HEIGHT))
-        overlay_quit_screen.set_alpha(0)
-        overlay_quit_screen.fill(BLACK)
-        screen.blit(overlay_quit_screen, (0, 0))
-
-        dialog_width = 400
-        dialog_height = 200
-        dialog_rectangle = pygame.Rect(WIDTH//2 - dialog_width//2, HEIGHT//2 - dialog_height//2, dialog_width, dialog_height)
-        pygame.draw.rect(screen, WHITE, dialog_rectangle)
-        pygame.draw.rect(screen, BLACK, dialog_rectangle, 3)
-
-        quit_text = MEDIUM.render("Do you really want to quit?", True, BLACK)
-        quit_text_pos = quit_text.get_rect(center=(dialog_rectangle.centerx, dialog_rectangle.centery - 40))
-        screen.blit(quit_text, quit_text_pos)
-
-        button_width = 100
-        button_height = 40
-        yes_button_pos = pygame.Rect(dialog_rectangle.centerx - button_width - 20, dialog_rectangle.centery + 20, button_width, button_height)
-        no_button_pos = pygame.Rect(dialog_rectangle.centerx + 20, dialog_rectangle.centery + 20, button_width, button_height)
-
-        pygame.draw.rect(screen, GREEN, yes_button_pos)
-        pygame.draw.rect(screen, RED, no_button_pos)
-        pygame.draw.rect(screen, BLACK, yes_button_pos, 2)
-        pygame.draw.rect(screen, BLACK, no_button_pos, 2)
-
-        yes_text = MEDIUM.render("Yes", True, BLACK)
-        no_text = MEDIUM.render("No", True, BLACK)
-        screen.blit(yes_text, yes_text.get_rect(center=yes_button_pos.center))
-        screen.blit(no_text, no_text.get_rect(center=no_button_pos.center))
-
-        self.quit_buttons_areas = [{"area": yes_button_pos, "action": "quit"}, {"area": no_button_pos, "action": "cancel"}]
-
-
 def run_game():
     global screen
     result = {}
@@ -621,14 +603,20 @@ def run_game():
     best_score = state["best_score"]
     win_streak = state["win_streak"]
 
-    # 1. Run Login Module
-    # This calls the run() method from your login.py
-    login_app = LoginScreen()
-    user_name, avatar_path = login_app.run()
-
-    # 2. Setup Main Game Window
+    # 1. Run Home UI
     pygame.init()
     clock = pygame.time.Clock()
+    screen = pygame.display.set_mode((1200, 800))
+    pygame.display.set_caption("Jeopardy!")
+    if not run_homepage(screen, clock):
+        pygame.quit()
+        sys.exit(0)
+
+    # 2. Run new character + username UI
+    character_ui = Character(screen)
+    user_name, _avatar_path = character_ui.run()
+
+    # 3. Setup Main Game Window
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('Jeopardy!')
     screen.fill(BLACK)
@@ -638,15 +626,28 @@ def run_game():
     game = None
     shop = None
     running = True
+    pending_quit_on_loading = False
+    pause_modal = pause_window(screen)
+    confirm_quit = False
 
     while running:
         if game is None:
             if "all_data" not in result:
                 for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit(0)
+                    if not pending_quit_on_loading and event.type in (pygame.QUIT,):
+                        pending_quit_on_loading = True
+                    elif not pending_quit_on_loading and event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        pending_quit_on_loading = True
+                    elif pending_quit_on_loading:
+                        choice = pause_modal.update([event], 1)
+                        if choice == 0:
+                            pygame.quit()
+                            sys.exit(0)
+                        if choice == 1:
+                            pending_quit_on_loading = False
                 draw_loading_screen()
+                if pending_quit_on_loading:
+                    pause_modal.draw()
                 pygame.display.flip()
                 clock.tick(60)
                 continue
@@ -722,13 +723,22 @@ def run_game():
             game.player.coins += 1000
             game.clear_bonus = True
 
-        if game.ui_state == "QUIT":
-            game.draw_quit_screen()
-
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN:
+            if not confirm_quit and event.type in (pygame.QUIT,):
+                confirm_quit = True
+                continue
+            if not confirm_quit and event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                confirm_quit = True
+                continue
+            if confirm_quit:
+                choice = pause_modal.update([event], 1)
+                if choice == 0:
+                    running = False
+                elif choice == 1:
+                    confirm_quit = False
+                continue
+
+            if event.type == pygame.KEYDOWN:
                 if game.ui_state == "ROUND":
                     game.ui_state = "BOARD"
                     continue
@@ -738,21 +748,13 @@ def run_game():
                         threading.Thread(target=generate_questions, args=(result,), daemon=True).start()
                         game = None
                         shop = None
+                        pending_quit_on_loading = False
+                        confirm_quit = False
                         continue
                     elif event.key == pygame.K_ESCAPE:
-                        running = False
+                        confirm_quit = True
                     continue
-                if event.key == pygame.K_ESCAPE:  # special
-                    if game.ui_state != "QUIT":
-                        game._state_before_quit = game.ui_state
-                        game.ui_state = "QUIT"
-                elif game.ui_state == "QUIT":
-                    if event.key == pygame.K_y:
-                        running = False
-                    elif event.key == pygame.K_n:
-                        game.ui_state = game._state_before_quit or "BOARD"
-                        game._state_before_quit = None
-                elif game.ui_state == "WAGER":
+                if game.ui_state == "WAGER":
                     if event.key == pygame.K_BACKSPACE:
                         game.wager_input = game.wager_input[:-1]
                         game.wager_error = ""
@@ -780,6 +782,9 @@ def run_game():
                     continue
                 if not game.handle_click(event.pos, shop, SHOP_BTN_RECT):
                     running = False
+
+        if confirm_quit:
+            pause_modal.draw()
 
         pygame.display.flip()
         clock.tick(60)
