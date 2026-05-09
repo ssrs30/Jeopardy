@@ -1,8 +1,6 @@
 import pygame
 import pygame.freetype
-import sys
 from pathlib import Path
-from pause import pause_window
 
 pygame.init()
 pygame.font.init()
@@ -15,11 +13,10 @@ class Character:
 
         current_dir = Path(__file__).parent
         bg_path = current_dir / "Game Assets" / "bg.png"
-        c1_path = current_dir / "Game Assets" / "Characters" / "c1.png"
-        c2_path = current_dir / "Game Assets" / "Characters" / "c2.png"
-        c3_path = current_dir / "Game Assets" / "Characters" / "c3.png"
-        c4_path = current_dir / "Game Assets" / "Characters" / "c4.png"
-        self.avatar_paths = [str(c1_path), str(c2_path), str(c3_path), str(c4_path)]
+        self.c1_path = current_dir / "Game Assets" / "Characters" / "c1.png"
+        self.c2_path = current_dir / "Game Assets" / "Characters" / "c2.png"
+        self.c3_path = current_dir / "Game Assets" / "Characters" / "c3.png"
+        self.c4_path = current_dir / "Game Assets" / "Characters" / "c4.png"
         frame_path = current_dir / "Game Assets" / "frame_char.png"
         frame_pressed_path = current_dir / "Game Assets" / "frame_char_pressed.png"
         frame_select_path = current_dir / "Game Assets" / "frame_select.png"
@@ -38,10 +35,11 @@ class Character:
         self.dark_surface.set_alpha(128)
 
         self.bg = pygame.image.load(str(bg_path)).convert_alpha()
-        self.c1 = pygame.image.load(str(c1_path)).convert_alpha()
-        self.c2 = pygame.image.load(str(c2_path)).convert_alpha()
-        self.c3 = pygame.image.load(str(c3_path)).convert_alpha()
-        self.c4 = pygame.image.load(str(c4_path)).convert_alpha()
+        self.c1 = pygame.image.load(str(self.c1_path)).convert_alpha()
+        self.c2 = pygame.image.load(str(self.c2_path)).convert_alpha()
+        self.c3 = pygame.image.load(str(self.c3_path)).convert_alpha()
+        self.c4 = pygame.image.load(str(self.c4_path)).convert_alpha()
+        self.selected_char = self.c1_path
         self.frame_select = pygame.image.load(str(frame_select_path)).convert_alpha()
 
         self.frame_continue = pygame.image.load(str(frame_continue_path)).convert_alpha()
@@ -53,7 +51,7 @@ class Character:
         self.continue_rect = self.continue_text.get_rect(topleft = (920, 710))
 
         self.quit_button = pygame.image.load(str(quit_button_path)).convert_alpha()
-        self.quit_button_rect = self.quit_button.get_rect(topleft = (10, 10))
+        self.quit_button_rect = self.quit_button.get_rect(topright = (1190, 10))
         
         self.frame = pygame.image.load(str(frame_path)).convert_alpha()
         self.frame_pressed = pygame.image.load(str(frame_pressed_path)).convert_alpha()
@@ -76,17 +74,10 @@ class Character:
 
         self.pos = (300, 450)
         self.rect = self.frame.get_rect(topleft = self.pos)
-        self.selected_idx = 0
 
         self.music_started = False
-        self.current_frame1 = self.frame
-        self.current_frame2 = self.frame
-        self.current_frame3 = self.frame
-        self.current_frame4 = self.frame
-        self.current_frame_continue = self.frame_continue
-        self.current_continue = self.continue_text
 
-    def update(self, events) -> str:
+    def update(self, events) -> int:
         if not self.music_started:
             pygame.mixer.music.set_volume(0.3)
             pygame.mixer.music.load(self.menu_BGM_path)
@@ -132,31 +123,30 @@ class Character:
                     self.button_sound.play()
                     self.pos = (300, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
-                    self.selected_idx = 0
+                    self.selected_char = self.c1_path
                 elif self.frame2_rect.collidepoint(mouse_pos):
                     self.button_sound.play()
                     self.pos = (460, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
-                    self.selected_idx = 1
+                    self.selected_char = self.c2_path
                 elif self.frame3_rect.collidepoint(mouse_pos):
                     self.button_sound.play()
                     self.pos = (640, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
-                    self.selected_idx = 2
+                    self.selected_char = self.c3_path
                 elif self.frame4_rect.collidepoint(mouse_pos):
                     self.button_sound.play()
                     self.pos = (800, 450)
                     self.rect = self.frame.get_rect(topleft = self.pos)
-                    self.selected_idx = 3
-
-                if self.frame_continue_rect.collidepoint(event.pos):
-                    self.button_sound.play()
-                    if self.text.strip():
-                        return "START"
+                    self.selected_char = self.c4_path
+                    
                     
                 if self.quit_button_rect.collidepoint(event.pos):
                     self.button_sound.play()
-                    return "QUIT"
+                    return 2, self.text, self.selected_char
+                
+                if self.frame_continue_rect.collidepoint(event.pos):
+                    return 4, self.text, self.selected_char
 
             if event.type == pygame.KEYDOWN and self.active:
                 if event.key == pygame.K_BACKSPACE:
@@ -164,7 +154,7 @@ class Character:
                 else:
                     if len(self.text) <= 20:
                         self.text += event.unicode
-        return "CHAR"
+        return 3, self.text, self.selected_char
         
 
     def draw(self):
@@ -190,47 +180,24 @@ class Character:
         self.screen.blit(self.current_frame_continue, self.frame_continue_rect)
         self.screen.blit(self.current_continue, self.continue_rect)
 
-    def run(self):
-        confirm_quit = False
-        modal = pause_window(self.screen)
-        while True:
-            events = pygame.event.get()
-            if confirm_quit:
-                for event in events:
-                    choice = modal.update([event], 3)
-                    if choice == 0:
-                        pygame.quit()
-                        sys.exit()
-                    if choice == 3:
-                        confirm_quit = False
-                self.draw()
-                modal.draw()
-                pygame.display.flip()
-                self.clock.tick(60)
-                continue
-
-            for event in events:
-                if event.type == pygame.QUIT:
-                    confirm_quit = True
-                    break
-
-            if confirm_quit:
-                self.draw()
-                modal.draw()
-                pygame.display.flip()
-                self.clock.tick(60)
-                continue
-
-            action = self.update(events)
-            if action == "QUIT":
-                confirm_quit = True
-            elif action == "START":
-                return self.text.strip(), self.avatar_paths[self.selected_idx]
-
-            self.draw()
-            pygame.display.flip()
-            self.clock.tick(60)
-
 if __name__ == "__main__":
-    char = Character()
-    char.run()
+    screen = pygame.display.set_mode((1200, 800))
+    window = Character(screen)
+    clock = pygame.time.Clock()
+    num = 3
+    running = True
+
+    while running:
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                running = False
+        
+        if num == 3:
+            num = window.update(events)
+            window.draw()
+        
+        pygame.display.flip()
+        clock.tick(30)
+    
+    pygame.quit()

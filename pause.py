@@ -6,7 +6,6 @@ pygame.init()
 class pause_window:
     def __init__(self, screen):
         self.screen = screen
-        self.clock = pygame.time.Clock()
         
         current_dir = Path(__file__).parent
         quit_frame_path = current_dir / "Game Assets" / "quit_frame.png"
@@ -33,11 +32,9 @@ class pause_window:
         self.button_pressed = pygame.image.load(str(button_pressed_path)).convert_alpha()
         self.buttonL_rect = self.button.get_rect(topleft = (360, 400))
         self.buttonR_rect = self.button.get_rect(topleft = (640, 400))
-        self.current_buttonL = self.button
-        self.current_buttonR = self.button
 
         self.quit_button = pygame.image.load(str(quit_button_path)).convert_alpha()
-        self.quit_button_rect = self.quit_button.get_rect(topleft = (10, 10))
+        self.quit_button_rect = self.quit_button.get_rect(topright = (1190, 10))
 
         
     def update(self, events, num) -> int:
@@ -82,3 +79,25 @@ class pause_window:
         self.screen.blit(self.yes, (420, 405))
         self.screen.blit(self.current_buttonR, self.buttonR_rect)
         self.screen.blit(self.no, (710, 405))
+
+if __name__ == "__main__":
+    screen = pygame.display.set_mode((1200, 800))
+    window = pause_window(screen)
+    clock = pygame.time.Clock()
+    num = 2
+    running = True
+
+    while running:
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                running = False
+        
+        if num == 2:
+            num = window.update(events, 1)
+            window.draw()
+        
+        pygame.display.flip()
+        clock.tick(30)
+    
+    pygame.quit()

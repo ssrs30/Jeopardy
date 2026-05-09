@@ -1,32 +1,15 @@
 """LLM Questions programme"""
 
 import os
-from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 import json
 
-
-def _load_api_key() -> str:
-    """
-    Load API key from environment first, then from local env files.
-    Supported files: API.env, .env (in the same directory as this file).
-    """
-    base_dir = Path(__file__).resolve().parent
-    load_dotenv(base_dir / "API.env")
-    load_dotenv(base_dir / ".env")
-
-    api_key = os.getenv("AZURE_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "AZURE_API_KEY not found. Please set it in system environment, "
-            "or add it to API.env/.env in the project directory."
-        )
-    return api_key
-
-
-AZURE_API_KEY = _load_api_key()
+# Load the API key environment variable from the .env file.
+load_dotenv()
+AZURE_API_KEY = os.getenv("AZURE_API_KEY")
+assert AZURE_API_KEY is not None
 
 # EUS2 uses an OpenAI-compatible /v1 endpoint
 EUS2_BASE_URL = "https://cuhk-apip.azure-api.net/openai-eus2/openai/v1"
@@ -52,6 +35,9 @@ def q_generate(prompt: str) -> str:
         )
         return response.choices[0].message.content
 
+def string_to_list(str):
+      return json.loads(str)
+
 username_prompt = """\
     Please provide a username for a game. (only the name, no other text)\
     """
@@ -68,7 +54,7 @@ prompt = """\
     Overall difficulty: 2/10, 6/10, 10/10.\
     For "Final Jeopardy!", randomly choose one category.\
     Please generate the output as a json object with the following format\
-    (only one dictionary, no other text):
+    (only the json string, no other text):
     {
         "round1": [
             {

@@ -11,6 +11,7 @@ class Homepage:
 
         current_dir = Path(__file__).parent
         bg_path = current_dir / "Game Assets" / "bg.png"
+        image_path = current_dir / "Game Assets" / "frame.png"
         title_path = current_dir / "Game Assets" / "JEOPARDY.png"
         start_path = current_dir / "Game Assets" / "START.png"
         startframe_path = current_dir / "Game Assets" / "frame_start.png"
@@ -29,6 +30,7 @@ class Homepage:
         self.button_sound = pygame.mixer.Sound(button_sound_path)
 
         self.bg = pygame.image.load(str(bg_path)).convert_alpha()
+        self.frame = pygame.image.load(str(image_path)).convert_alpha()
         self.title = pygame.image.load(str(title_path)).convert_alpha()
         self.quit_frame = pygame.image.load(str(quit_frame_path)).convert_alpha()
         self.quitting = pygame.image.load(str(quitting_path)).convert_alpha()
@@ -41,7 +43,7 @@ class Homepage:
         self.buttonR_rect = self.button.get_rect(topleft = (640, 400))
 
         self.quit_button = pygame.image.load(str(quit_button_path)).convert_alpha()
-        self.quit_button_rect = self.quit_button.get_rect(topleft = (10, 10))
+        self.quit_button_rect = self.quit_button.get_rect(topright = (1190, 10))
 
         self.start = pygame.image.load(str(start_path)).convert_alpha()
         self.start_pressed = pygame.image.load(str(start_pressed_path)).convert_alpha()
@@ -56,9 +58,6 @@ class Homepage:
         self.dark_surface.set_alpha(128)
 
         self.music_started = False
-        self.confirm_quit = False
-        self.current_buttonL = self.button
-        self.current_buttonR = self.button
 
     def update(self, events) -> int:
         if not self.music_started:
@@ -68,12 +67,8 @@ class Homepage:
             self.music_started = True
 
         mouse_pos = pygame.mouse.get_pos()
-
-        # Freeze homepage hover effects while quit modal is open.
-        if self.confirm_quit:
-            self.currentframe_start = self.startframe
-            self.current_start = self.start
-        elif self.startframe_rect.collidepoint(mouse_pos):
+        
+        if self.startframe_rect.collidepoint(mouse_pos):
             self.currentframe_start = self.startframe_pressed
             self.current_start = self.start_pressed
         else:
@@ -81,32 +76,11 @@ class Homepage:
             self.current_start = self.start
 
         for event in events:
-            if event.type == pygame.QUIT:
-                self.confirm_quit = True
-
-            if event.type == pygame.KEYDOWN and self.confirm_quit:
-                if event.key == pygame.K_y:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if self.quit_button_rect.collidepoint(event.pos):
                     self.button_sound.play()
                     self.music_started = False
                     return 2
-                if event.key in (pygame.K_n, pygame.K_ESCAPE):
-                    self.button_sound.play()
-                    self.confirm_quit = False
-
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if self.confirm_quit:
-                    if self.buttonL_rect.collidepoint(event.pos):
-                        self.button_sound.play()
-                        self.music_started = False
-                        return 2
-                    if self.buttonR_rect.collidepoint(event.pos):
-                        self.button_sound.play()
-                        self.confirm_quit = False
-                    continue
-
-                if self.quit_button_rect.collidepoint(event.pos):
-                    self.button_sound.play()
-                    self.confirm_quit = True
                 if self.startframe_rect.collidepoint(event.pos):
                     self.button_sound.play()
                     self.music_started = False
@@ -120,19 +94,26 @@ class Homepage:
         self.screen.blit(self.title, (180, 200))
         self.screen.blit(self.current_start, self.start_rect)
         self.screen.blit(self.quit_button, self.quit_button_rect)
-        if self.confirm_quit:
-            mouse_pos = pygame.mouse.get_pos()
-            self.current_buttonL = self.button_pressed if self.buttonL_rect.collidepoint(mouse_pos) else self.button
-            self.current_buttonR = self.button_pressed if self.buttonR_rect.collidepoint(mouse_pos) else self.button
-            self.screen.blit(self.dark_surface, (0, 0))
-            self.screen.blit(self.quit_frame, (300, 250))
-            self.screen.blit(self.quitting, (400, 310))
-            self.screen.blit(self.current_buttonL, self.buttonL_rect)
-            self.screen.blit(self.yes, (420, 405))
-            self.screen.blit(self.current_buttonR, self.buttonR_rect)
-            self.screen.blit(self.no, (710, 405))
 
 
 if __name__ == "__main__":
-    home = Homepage()
-    home.run()
+    screen = pygame.display.set_mode((1200, 800))
+    window = Homepage(screen)
+    clock = pygame.time.Clock()
+    num = 1
+    running = True
+
+    while running:
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                running = False
+        
+        if num == 1:
+            num = window.update(events)
+            window.draw()
+        
+        pygame.display.flip()
+        clock.tick(30)
+    
+    pygame.quit()

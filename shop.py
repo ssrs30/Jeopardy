@@ -1,108 +1,155 @@
 import pygame
+import pygame.freetype
+from pathlib import Path
 
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-GRAY = (200, 200, 200)
-BLUE = (0, 120, 255)
-GOLD = (255, 215, 0)
-PURPLE = (128, 0, 128)
-DARK_BLUE = (30, 30, 60)
+pygame.init()
+pygame.font.init()
 
 class Shop:
-    def __init__(self, screen, player):
-        """
-        Initialize the Shop with the game screen and player instance.
-        The player instance is used to manage coins and inventory.
-        """
+    def __init__(self, screen):
         self.screen = screen
-        self.player = player
-        self.font_m = pygame.font.Font(None, 36)
-        self.font_s = pygame.font.Font(None, 24)
+
+        current_dir = Path(__file__).parent
+        frame_path = current_dir / "Game Assets" / "frame_player.png"
+        frame_pressed_path = current_dir / "Game Assets" / "frame_player_pressed.png"
+        shop_title_path = current_dir / "Game Assets" / "SHOP_title.png"
+        frame_return_path = current_dir / "Game Assets" / "button.png"
+        frame_return_pressed_path = current_dir / "Game Assets" / "button_pressed.png"
+        return_text_path = current_dir / "Game Assets" / "RETURN.png"
+        return_pressed_path = current_dir / "Game Assets" / "RETURN_pressed.png"
+        quit_button_path = current_dir / "Game Assets" / "quit_button.png"
+        items_path = current_dir / "Game Assets" / "ITEMS.png"
+        items_pressed_path = current_dir / "Game Assets" / "ITEMS_pressed.png"
+        shop_path = current_dir / "Game Assets" / "SHOP.png"
+        shop_pressed_path = current_dir / "Game Assets" / "SHOP_pressed.png"
+        top_button_path = current_dir / "Game Assets" / "top_button.png"
+        top_button_pressed_path = current_dir / "Game Assets" / "top_button_pressed.png"
+        icon1_path = current_dir / "Game Assets" / "shop_icon1.png"
+        icon2_path = current_dir / "Game Assets" / "shop_icon2.png"
+        icon3_path = current_dir / "Game Assets" / "shop_icon3.png"
+        icon4_path = current_dir / "Game Assets" / "shop_icon4.png"
+
+        self.frame = pygame.image.load(str(frame_path)).convert_alpha()
+        self.frame_pressed = pygame.image.load(str(frame_pressed_path)).convert_alpha()
+        self.frame_rect1 = self.frame.get_rect(topleft = (200, 300))
+        self.frame_rect2 = self.frame.get_rect(topleft = (650, 300))
+        self.frame_rect3 = self.frame.get_rect(topleft = (200, 500))
+        self.frame_rect4 = self.frame.get_rect(topleft = (650, 500))
+        self.shop_title = pygame.image.load(str(shop_title_path)).convert_alpha()
+
+        self.quit_button = pygame.image.load(str(quit_button_path)).convert_alpha()
+        self.quit_button_rect = self.quit_button.get_rect(topright = (1190, 10))
+
+        self.frame_return = pygame.image.load(str(frame_return_path)).convert_alpha()
+        self.frame_return_pressed = pygame.image.load(str(frame_return_pressed_path)).convert_alpha()
+        self.frame_return_rect = self.frame_return.get_rect(center = (600, 700))
+
+        self.return_text = pygame.image.load(str(return_text_path)).convert_alpha()
+        self.return_pressed = pygame.image.load(str(return_pressed_path)).convert_alpha()
+        self.return_rect = self.return_text.get_rect(center = (600, 700))
+
+        self.items = pygame.image.load(str(items_path)).convert_alpha()
+        self.items_pressed = pygame.image.load(str(items_pressed_path)).convert_alpha()
+        self.items_rect = self.items.get_rect(center = (1050, 50))
+
+        self.shop = pygame.image.load(str(shop_path)).convert_alpha()
+        self.shop_pressed = pygame.image.load(str(shop_pressed_path)).convert_alpha()
+        self.shop_rect = self.shop.get_rect(center = (875, 50))
+
+        self.top_button = pygame.image.load(str(top_button_path)).convert_alpha()
+        self.top_button_pressed = pygame.image.load(str(top_button_pressed_path)).convert_alpha()
+        self.top_button_items_rect = self.top_button.get_rect(center = (1050, 50))
+        self.top_button_shop_rect = self.top_button.get_rect(center = (875, 50))
+
+        self.icon1 = pygame.image.load(str(icon1_path)).convert_alpha()        
+        self.icon2 = pygame.image.load(str(icon2_path)).convert_alpha()        
+        self.icon3 = pygame.image.load(str(icon3_path)).convert_alpha()        
+        self.icon4 = pygame.image.load(str(icon4_path)).convert_alpha()
+
+    def update(self, events):
+        mouse_pos = pygame.mouse.get_pos()
+
+        if self.frame_return_rect.collidepoint(mouse_pos):
+            self.current_button = self.frame_return_pressed
+            self.current_return = self.return_pressed
+        else:
+            self.current_button = self.frame_return
+            self.current_return = self.return_text
+
+        if self.top_button_items_rect.collidepoint(mouse_pos):
+            self.current_top_button_items = self.top_button_pressed
+            self.current_items = self.items_pressed
+        else:
+            self.current_top_button_items = self.top_button
+            self.current_items = self.items
         
-        self.items = [
-            {"id": "skip", "name": "Skip Card", "price": 500, "desc": "Skip one question safely", "rect": pygame.Rect(100, 150, 280, 100)},
-            {"id": "fifty_fifty", "name": "50/50", "price": 300, "desc": "Remove 2 wrong options", "rect": pygame.Rect(420, 150, 280, 100)},
-            {"id": "shield", "name": "Point Shield", "price": 400, "desc": "No penalty for wrong answer", "rect": pygame.Rect(100, 280, 280, 100)},
-            {"id": "double", "name": "Double Chance", "price": 600, "desc": "Two attempts for one question", "rect": pygame.Rect(420, 280, 280, 100)}
-        ]
+        if self.top_button_shop_rect.collidepoint(mouse_pos):
+            self.current_top_button_shop = self.top_button_pressed
+            self.current_shop = self.shop_pressed
+        else:
+            self.current_top_button_shop = self.top_button
+            self.current_shop = self.shop
+
+        self.current_frame1 = self.frame_pressed if self.frame_rect1.collidepoint(mouse_pos) else self.frame
+        self.current_frame2 = self.frame_pressed if self.frame_rect2.collidepoint(mouse_pos) else self.frame
+        self.current_frame3 = self.frame_pressed if self.frame_rect3.collidepoint(mouse_pos) else self.frame
+        self.current_frame4 = self.frame_pressed if self.frame_rect4.collidepoint(mouse_pos) else self.frame
+
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if self.frame_return_rect.collidepoint(event.pos):
+                    return 2
+                if self.top_button_items_rect.collidepoint(event.pos):
+                    return 2
+                if self.top_button_shop_rect.collidepoint(event.pos):
+                    return 2
+                if self.quit_button_rect.collidepoint(event.pos):
+                    return 2
         
-        self.exit_button = pygame.Rect(325, 480, 150, 50)
-        self.message = ""
-        self.msg_timer = 0
+        return 1
 
     def draw(self):
-        """Draw the Shop UI components"""
-        self.screen.fill(DARK_BLUE)
+        self.screen.fill((0, 0, 0))
+
+        self.screen.blit(self.quit_button, self.quit_button_rect)
+        self.screen.blit(self.current_top_button_items, self.top_button_items_rect)
+        self.screen.blit(self.current_top_button_shop, self.top_button_shop_rect)
+        self.screen.blit(self.current_items, self.items_rect)
+        self.screen.blit(self.current_shop, self.shop_rect)
+        self.screen.blit(self.current_button, self.frame_return_rect)
+        self.screen.blit(self.current_return, self.return_rect)
+
+        self.screen.blit(self.shop_title, (400, 100))
+
+        self.screen.blit(self.current_frame1, self.frame_rect1)
+        self.screen.blit(self.current_frame2, self.frame_rect2)
+        self.screen.blit(self.current_frame3, self.frame_rect3)
+        self.screen.blit(self.current_frame4, self.frame_rect4)
+
+        self.screen.blit(self.icon1, (240, 340))
+        self.screen.blit(self.icon2, (690, 340))
+        self.screen.blit(self.icon3, (240, 540))
+        self.screen.blit(self.icon4, (690, 543))
+
+
+if __name__ == "__main__":
+    screen = pygame.display.set_mode((1200, 800))
+    window = Shop(screen)
+    clock = pygame.time.Clock()
+    num = 1
+    running = True
+
+    while running:
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                running = False
         
-        # 1. Draw Header
-        title = self.font_m.render("GAME SHOP", True, GOLD)
-        self.screen.blit(title, (400 - title.get_width()//2, 40))
+        if num == 1:
+            num = window.update(events)
+            window.draw()
         
-        # 2. Display Player Stats (Coins & Inventory)
-        coin_txt = self.font_m.render(f"Your Coins: {self.player.coins}", True, WHITE)
-        self.screen.blit(coin_txt, (50, 90))
-        
-        inv_txt = self.font_s.render(
-            f"Inventory -> Skip: {self.player.inventory.get('skips', 0)} | "
-            f"50/50: {self.player.inventory.get('fifty_fifty', 0)} | "
-            f"Shield: {self.player.inventory.get('shields', 0)}", 
-            True, GRAY
-        )
-        self.screen.blit(inv_txt, (50, 120))
-
-        # 3. Draw Item Cards
-        for item in self.items:
-            # Draw card background
-            pygame.draw.rect(self.screen, BLUE, item["rect"], border_radius=10)
-            pygame.draw.rect(self.screen, WHITE, item["rect"], 2, border_radius=10)
-            
-            # Item Name & Price
-            name_surf = self.font_m.render(item["name"], True, WHITE)
-            price_surf = self.font_m.render(f"${item['price']}", True, GOLD)
-            desc_surf = self.font_s.render(item["desc"], True, GRAY)
-            
-            self.screen.blit(name_surf, (item["rect"].x + 15, item["rect"].y + 15))
-            self.screen.blit(price_surf, (item["rect"].x + 200, item["rect"].y + 15))
-            self.screen.blit(desc_surf, (item["rect"].x + 15, item["rect"].y + 60))
-
-        # 4. Draw Exit Button
-        pygame.draw.rect(self.screen, PURPLE, self.exit_button, border_radius=5)
-        exit_txt = self.font_m.render("EXIT", True, WHITE)
-        self.screen.blit(exit_txt, (self.exit_button.centerx - exit_txt.get_width()//2, self.exit_button.centery - exit_txt.get_height()//2))
-
-        # 5. Display Feedback Message (e.g., "Not enough coins")
-        if self.msg_timer > 0:
-            msg_surf = self.font_s.render(self.message, True, GOLD)
-            self.screen.blit(msg_surf, (400 - msg_surf.get_width()//2, 440))
-            self.msg_timer -= 1
-
-    def handle_click(self, pos):
-        """Process click events for purchasing items or exiting"""
-        # Check Exit button
-        if self.exit_button.collidepoint(pos):
-            return "EXIT"
-
-        # Check Item buttons
-        for item in self.items:
-            if item["rect"].collidepoint(pos):
-                if self.player.coins >= item["price"]:
-                    self.player.coins -= item["price"]
-                    self.update_inventory(item["id"])
-                    self.message = f"Purchased {item['name']}!"
-                    self.msg_timer = 90 # Show message for 1.5 seconds
-                else:
-                    self.message = "Not enough coins!"
-                    self.msg_timer = 90
-        return None
-
-    def update_inventory(self, item_id):
-        """Map item IDs to player inventory keys"""
-        if item_id == "skip":
-            self.player.inventory["skips"] = self.player.inventory.get("skips", 0) + 1
-        elif item_id == "fifty_fifty":
-            self.player.inventory["fifty_fifty"] = self.player.inventory.get("fifty_fifty", 0) + 1
-        elif item_id == "shield":
-            self.player.inventory["shields"] = self.player.inventory.get("shields", 0) + 1
-        elif item_id == "double":
-            self.player.inventory["double_chance"] = self.player.inventory.get("double_chance", 0) + 1
-
+        pygame.display.flip()
+        clock.tick(30)
+    
+    pygame.quit()
