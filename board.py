@@ -115,13 +115,24 @@ class question_board:
         self.board54_pressed = False
         self.board55_pressed = False
 
+        self.player_name = ""
+        self.player_score = 0
+        self.AI_score1 = 0
+        self.AI_score2 = 0
+
 
     def update_questions(self, questions: list, round_no):
         self.questions = questions
         self._sort_questions(round_no)
     
-    def update_character(self, char_path):
+    def update_character(self, player_name, char_path):
+        self.player_name = player_name
         self.char = pygame.image.load(str(char_path)).convert_alpha()
+
+    def update_score(self, player_score, AI_score1, AI_score2):
+        self.player_score = player_score
+        self.AI_score1 = AI_score1
+        self.AI_score2 = AI_score2
 
     def update(self, events) -> tuple[int]:
         if not self.music_started:
@@ -455,6 +466,13 @@ class question_board:
         self.screen.blit(self.char, (55, 40))
         self.screen.blit(self.quit_button, self.quit_button_rect)
 
+        self.font.render_to(self.screen, (150, 45), self.player_name, (255, 255, 255))
+        self.font.render_to(self.screen, (150, 80), str(self.player_score), (255, 255, 255))
+        self.font.render_to(self.screen, (365, 38), "AI1", (255, 255, 255))
+        self.font.render_to(self.screen, (365, 98), "AI2", (255, 255, 255))
+        self.font.render_to(self.screen, (420, 38), str(self.AI_score1), (255, 255, 255))
+        self.font.render_to(self.screen, (420, 98), str(self.AI_score2), (255, 255, 255))
+
         self.screen.blit(self.current_top_button_items, self.top_button_items_rect)
         self.screen.blit(self.current_top_button_shop, self.top_button_shop_rect)
         self.screen.blit(self.current_items, self.items_rect)
@@ -595,7 +613,7 @@ if __name__ == "__main__":
     with open(Path(__file__).parent / "questions.json", "r") as file:
         questions = json.load(file)
     question.update_questions(questions, 1)
-    question.update_character(char_path)
+    question.update_character("Happy",char_path)
 
     while running:
         events = pygame.event.get()
