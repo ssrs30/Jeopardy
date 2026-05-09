@@ -30,8 +30,9 @@ LARGE = pygame.font.Font(None, 48)
 HEIGHT = 800
 WIDTH = 1000
 
-# Main window UI: BOARD | WAGER | QUESTION | RESULT | SHOP | GAMEOVER
+# Main window UI: BOARD | WAGER | QUESTION | RESULT | SHOP | BAG | GAMEOVER
 SHOP_BTN_RECT = pygame.Rect(700, 20, 80, 40)
+BAG_BTN_RECT = pygame.Rect(800, 20, 80, 40)  # 新增背包按钮位置
 
 
 def run_homepage(screen: pygame.Surface, clock: pygame.time.Clock) -> bool:
@@ -97,7 +98,6 @@ def save_state(best_score: int, win_streak: int) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-# produce questions and check the answer
 class Question:
     def __init__(self, question_text: str, value: int, options: list[str], correct: int):
         self.question_text = question_text
@@ -109,31 +109,26 @@ class Question:
         return user_answer == self.correct
 
 
-# manage table
 class Board:
     def __init__(self, categories: list[str], values: list[int], questions_dict: dict[tuple[int, int], dict]):
         self.categories = categories
         self.values = values
         self.row = len(values)
         self.col = len(categories)
-        # question_dict is initialized in Game.__init__
-        self.grid = [[None] * self.col for i in range(self.row)]  # list[list[Question]]
+        self.grid = [[None] * self.col for i in range(self.row)] 
         for (col, row), items in questions_dict.items():
             self.grid[row][col] = Question(items["question_text"], items["value"], items["options"], items["correct"])
-        self.answered = [[False] * self.col for i in range(self.row)]  # list[list[bool]]
+        self.answered = [[False] * self.col for i in range(self.row)] 
 
     def get_question(self, row: int, col: int) -> Question:
         return self.grid[row][col]
 
-    # mark the question as answered
     def mark_answered(self, row: int, col: int) -> None:
         self.answered[row][col] = True
 
-    # whether a question has answered
     def is_answered(self, row: int, col: int) -> bool:
         return self.answered[row][col]
 
-    # whether all questions has answered
     def all_answered(self) -> bool:
         for row in self.answered:
             for question_state in row:
@@ -142,7 +137,6 @@ class Board:
         return True
 
 
-# ai player and user
 class Player:
     def __init__(self, name="User"):
         self.name = name
@@ -152,7 +146,7 @@ class Player:
             "skips": 0,
             "fifty_fifty": 0,
             "shields": 0,
-            "double_award": 0,  # Ensure this matches the item system
+            "double_award": 0,  
         }
 
     def add_score(self, points):
@@ -164,113 +158,156 @@ class Player:
             self.score = 0
 
 
-# ================== Item Manager Class ==================
+# ================== 新增：背包界面类 ==================
+class Bag:
+    def __init__(self, screen, player):
+        self.screen = screen
+        self.player = player
+        self.active_item = None  # 记录玩家选择要在下一题使用的道具
+
+        self.item_info = {
+            "skips": ("Skip", ORANGE, "Skip the next question without penalty."),
+            "fifty_fifty": ("50/50", BLUE, "Eliminate 2 wrong options."),
+            "shields": ("Shield", GRAY, "Prevent point loss if wrong."),
+            "double_award": ("Double", GOLD, "Earn double points if correct.")
+        }
+        
+        self.close_btn = pygame.Rect(WIDTH // 2 - 100, HEIGHT - 100, 200, 50)
+        
+        # 预计算卡片区域
+        self.item_rects = {}
+        start_x = WIDTH // 2 - 400
+        start_y = 250
+        for i, key in enumerate(self.item_info.keys()):
+            rect = pygame.Rect(start_x + i * 200, start_y, 180, 250)
+            self.item_rects[key] = rect
+
+    def draw(self):
+        overlay = pygame.Surface((WIDTH, HEIGHT))
+        overlay.set_alpha(230)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+
+        title = LARGE.render("Inventory (Bag)", True, WHITE)
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 100)))
+        
+        subtitle = SMALL.render("Click to EQUIP an item for your NEXT question:", True, YELLOW)
+        self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 150)))
+
+        for key, rect in self.item_rects.items():
+            name, color, desc = self.item_info[key]
+            count = self.player.inventory.get(key, 0)
+            
+            # 卡片背景颜色
+            bg_color = (50, 50, 50)
+            if self.active_item == key:
+                bg_color = color  # 已装备则高亮
+            elif count > 0:
+                bg_color = (80, 80, 80)
+                
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=15)
+            pygame.draw.rect(self.screen, WHITE if count > 0 else GRAY, rect, 3, border_radius=15)
+
+            # 名称与数量
+            name_surf = MEDIUM.render(name, True, WHITE if count > 0 else GRAY)
+            self.screen.blit(name_surf, name_surf.get_rect(midtop=(rect.centerx, rect.top + 20)))
+            
+            count_surf = LARGE.render(f"x{count}", True, WHITE if count > 0 else GRAY)
+            self.screen.blit(count_surf, count_surf.get_rect(center=(rect.centerx, rect.centery - 20)))
+
+            # 描述换行显示
+            words = desc.split()
+            line1 = " ".join(words[:len(words)//2 + 1])
+            line2 = " ".join(words[len(words)//2 + 1:])
+            desc1 = SMALL.render(line1, True, WHITE)
+            desc2 = SMALL.render(line2, True, WHITE)
+            self.screen.blit(desc1, desc1.get_rect(midbottom=(rect.centerx, rect.bottom - 40)))
+            self.screen.blit(desc2, desc2.get_rect(midbottom=(rect.centerx, rect.bottom - 20)))
+
+            # 装备状态文字
+            if self.active_item == key:
+                status = SMALL.render("EQUIPPED", True, GREEN if bg_color != GREEN else BLACK)
+                self.screen.blit(status, status.get_rect(midbottom=(rect.centerx, rect.bottom + 30)))
+
+        # Close 按钮
+        pygame.draw.rect(self.screen, RED, self.close_btn, border_radius=10)
+        pygame.draw.rect(self.screen, WHITE, self.close_btn, 3, border_radius=10)
+        close_text = MEDIUM.render("CLOSE", True, WHITE)
+        self.screen.blit(close_text, close_text.get_rect(center=self.close_btn.center))
+
+    def handle_click(self, pos):
+        if self.close_btn.collidepoint(pos):
+            return "EXIT"
+            
+        for key, rect in self.item_rects.items():
+            if rect.collidepoint(pos):
+                count = self.player.inventory.get(key, 0)
+                if count > 0:
+                    # 切换装备状态
+                    if self.active_item == key:
+                        self.active_item = None
+                    else:
+                        self.active_item = key
+        return None
+
+
+# ================== 重构：后台道具逻辑执行器 ==================
 class ItemManager:
     def __init__(self, game):
         self.game = game
-        
-        # Item status activated for this turn
-        self.shield_active = False
-        self.double_award_active = False
-        self.eliminated_options = []  # Store indices of options eliminated by 50/50
-
-        # Define UI positions for item buttons
-        self.item_buttons = {
-            "skips": pygame.Rect(100, HEIGHT - 80, 150, 50),
-            "fifty_fifty": pygame.Rect(300, HEIGHT - 80, 150, 50),
-            "shields": pygame.Rect(500, HEIGHT - 80, 150, 50),
-            "double_award": pygame.Rect(700, HEIGHT - 80, 150, 50)
-        }
-        
-        # Item display names and colors
-        self.item_info = {
-            "skips": ("Skip", ORANGE),
-            "fifty_fifty": ("50/50", BLUE),
-            "shields": ("Shield", GRAY),
-            "double_award": ("Double", GOLD)
-        }
-
-    def reset_turn(self):
-        """Reset item status before each question starts"""
         self.shield_active = False
         self.double_award_active = False
         self.eliminated_options = []
 
-    def draw(self, screen):
-        """Draw item buttons at the bottom of the question screen"""
-        for item_key, rect in self.item_buttons.items():
-            count = self.game.player.inventory.get(item_key, 0)
-            
-            # Determine button state
-            is_usable = count > 0
-            if item_key == "fifty_fifty" and len(self.eliminated_options) > 0:
-                is_usable = False
-            if item_key == "shields" and self.shield_active:
-                is_usable = False
-            if item_key == "double_award" and self.double_award_active:
-                is_usable = False
+    def reset_turn(self):
+        """每题开始前重置当前 Buff"""
+        self.shield_active = False
+        self.double_award_active = False
+        self.eliminated_options = []
 
-            # Set color based on availability
-            color = self.item_info[item_key][1] if is_usable else (50, 50, 50)
-            
-            pygame.draw.rect(screen, color, rect)
-            pygame.draw.rect(screen, WHITE, rect, 2)
-            
-            text_str = f"{self.item_info[item_key][0]} (x{count})"
-            text_surface = SMALL.render(text_str, True, WHITE)
-            text_pos = text_surface.get_rect(center=rect.center)
-            screen.blit(text_surface, text_pos)
-
-    def handle_click(self, pos):
-        """Handle item click events"""
-        for item_key, rect in self.item_buttons.items():
-            if rect.collidepoint(pos):
-                self.use_item(item_key)
-                return True
-        return False
-
-    def use_item(self, item_key):
-        count = self.game.player.inventory.get(item_key, 0)
-        if count <= 0:
-            return  
-
-        row, col = self.game.current_question_pos
+    def apply_item(self, item_key, row, col):
+        """应用背包传来的道具"""
+        self.game.player.inventory[item_key] -= 1
         question = self.game.board.get_question(row, col)
 
         if item_key == "skips":
-            self.game.player.inventory["skips"] -= 1
             self.game.board.mark_answered(row, col)
             self.game.result_text = "Question Skipped! No penalty."
             self.game.result_color = YELLOW
             self.game.timer_running = False
             self.game.ui_state = "RESULT"
             self.game.result_timer = 180
-            self.game._check_round_end() # Uniformly call round end check
+            self.game._check_round_end()
 
         elif item_key == "fifty_fifty":
-            if len(self.eliminated_options) == 0:
-                self.game.player.inventory["fifty_fifty"] -= 1
-                correct_idx = question.correct
-                wrong_indices = [i for i in range(4) if i != correct_idx]
-                self.eliminated_options = random.sample(wrong_indices, 2)
+            correct_idx = question.correct
+            wrong_indices = [i for i in range(4) if i != correct_idx]
+            self.eliminated_options = random.sample(wrong_indices, 2)
 
         elif item_key == "shields":
-            if not self.shield_active:
-                self.game.player.inventory["shields"] -= 1
-                self.shield_active = True
+            self.shield_active = True
 
         elif item_key == "double_award":
-            if not self.double_award_active:
-                self.game.player.inventory["double_award"] -= 1
-                self.double_award_active = True
-# ================================================
+            self.double_award_active = True
+
+    def draw_active_buffs(self, screen):
+        """在答题界面顶部提示当前生效的道具"""
+        buffs = []
+        if len(self.eliminated_options) > 0: buffs.append("50/50 ACTIVE")
+        if self.shield_active: buffs.append("SHIELD ACTIVE")
+        if self.double_award_active: buffs.append("DOUBLE ACTIVE")
+        
+        if buffs:
+            text = " | ".join(buffs)
+            surf = SMALL.render(text, True, GREEN)
+            screen.blit(surf, surf.get_rect(center=(WIDTH // 2, 100)))
+# ========================================================
 
 
-# game running
 class Game:
     def __init__(self, all_data: dict):
         if "round1" not in all_data:
-            print("Round 1 data doesn't exist.")  # check
+            print("Round 1 data doesn't exist.")  
             sys.exit(1)
         if "round2" not in all_data:
             print("Round 2 data doesn't exist.")
@@ -283,10 +320,10 @@ class Game:
         round2_data = self._normalize_round_data(all_data["round2"])
         round3_data = self._normalize_round_data(all_data["round3"])
 
-        categories = []  # categpries shown on the top of the board
-        data_1 = {}  # dictionary that contains all questions in round 1
-        data_2 = {}  # dictionary that contains all questions in round 2
-        data_3 = {}  # dictionary that contains all questions in round 3
+        categories = []  
+        data_1 = {}  
+        data_2 = {}  
+        data_3 = {}  
         self.data = {"round1": data_1, "round2": data_2, "round3": data_3}
 
         for column, category in enumerate(round1_data):
@@ -308,17 +345,17 @@ class Game:
                 data_3[(column, row)] = {"question_text": items["question"], "options": items["options"], "correct": items["correct"], "value": items["value"]}
         
 
-        self.categories = categories  # list[str]
+        self.categories = categories  
         self.values = values_1
-        self.rows = len(round1_data[0]["questions"])  # int
-        self.cols = len(categories)  # int
-        self.cell_width = WIDTH // self.cols  # int
-        self.cell_height = (HEIGHT - 100) // (self.rows + 1)  # int
+        self.rows = len(round1_data[0]["questions"])  
+        self.cols = len(categories)  
+        self.cell_width = WIDTH // self.cols  
+        self.cell_height = (HEIGHT - 100) // (self.rows + 1)  
 
         self.board = Board(self.categories, self.values, data_1)
         self.player = Player()
 
-        self.ui_state = "ROUND"  # str
+        self.ui_state = "ROUND"  
         self.go_to_gameover_after_result = False
 
         self.double_row_round_1, self.double_col_round_1 = random.randint(0, self.rows - 1), random.randint(0, self.cols - 1)
@@ -338,23 +375,20 @@ class Game:
         self.wager_amount = 0
         self.wager_input = ""   
         self.wager_error = ""
-        self.wager_input_rect = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 40, 300, 44)    # wager input rectangle
-        self.wager_confirm_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 100, 200, 48)     # wager confirm rectangle
+        self.wager_input_rect = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 40, 300, 44)    
+        self.wager_confirm_rect = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 100, 200, 48)     
         self.clear_bonus = False
-        self.next_round = False  # whether to go to the next round
+        self.next_round = False  
         self.best_score = 0
         self.win_streak = 0
         self.gameover_stats_applied = False
         
-        # Instantiate the Item Manager
+        # 初始化系统
         self.item_manager = ItemManager(self)
+        self.bag = Bag(pygame.display.get_surface(), self.player)
 
     @staticmethod
     def _normalize_round_data(round_data):
-        """
-        Normalize round data to list[dict].
-        Some models return final round as a single dict, not a list.
-        """
         if isinstance(round_data, dict):
             return [round_data]
         if isinstance(round_data, list):
@@ -375,6 +409,9 @@ class Game:
             if shop_btn.collidepoint(pos):
                 self.ui_state = "SHOP"
                 return True
+            if BAG_BTN_RECT.collidepoint(pos):
+                self.ui_state = "BAG"
+                return True
 
             x, y = pos
             if y > 100:
@@ -385,6 +422,14 @@ class Game:
                     if 0 <= row < self.rows and not self.board.is_answered(row, col):
                         self.current_question_pos = (row, col)
                         self.selected_option = -1
+                        self.item_manager.reset_turn()
+                        
+                        # 特殊逻辑：如果装备了 Skip，直接跳过，不进问题/赌注界面
+                        if self.bag.active_item == "skips":
+                            self.item_manager.apply_item("skips", row, col)
+                            self.bag.active_item = None
+                            return True
+
                         if self.current_round == 2:
                             if row == self.double_row_round_2_1 and col == self.double_col_round_2_1 or (row == self.double_row_round_2_2 and col == self.double_col_round_2_2):
                                 self.ui_state = "WAGER"
@@ -405,11 +450,17 @@ class Game:
                             self.wager_input = ""
                             self.wager_error = ""
                             return True
+                        
                         self.ui_state = "QUESTION"
                         self.timer = 5
                         self.timer_running = True
                         self.last_record = pygame.time.get_ticks()
-                        self.item_manager.reset_turn() # Start new question, reset items
+
+                        # 进入普通题目，应用其他道具
+                        if self.bag.active_item:
+                            self.item_manager.apply_item(self.bag.active_item, row, col)
+                            self.bag.active_item = None
+                            
                         return True
             return True
 
@@ -424,16 +475,17 @@ class Game:
                 self.ui_state = "BOARD"
             return True
 
-        if self.ui_state == "QUESTION":
-            # Intercept item clicks first
-            if self.item_manager.handle_click(pos):
-                return True
+        if self.ui_state == "BAG":
+            react = self.bag.handle_click(pos)
+            if react == "EXIT":
+                self.ui_state = "BOARD"
+            return True
 
+        if self.ui_state == "QUESTION":
             for i, region in enumerate(self.option_areas):
-                # Exclude options eliminated by 50/50
+                # 排除被 50/50 干掉的选项
                 if i in self.item_manager.eliminated_options:
                     continue
-                
                 if region.collidepoint(pos):
                     self.selected_option = i
                     self.check_answer()
@@ -450,29 +502,31 @@ class Game:
         raw = self.wager_input.strip()
         if not raw:
             self.wager_error = "Please input the wager amount"
-            print(self.wager_error)
             return False
         try:
             val = int(raw)
         except ValueError:
             self.wager_error = "Please input a valid integer"
-            print(self.wager_error)
             return False
         if not (min_w <= val <= max_w):
             self.wager_error = f"The wager must be between {min_w} and {max_w}"
-            print(self.wager_error)
             return False
+            
         self.wager_amount = val
         self.wager_error = ""
         self.ui_state = "QUESTION"
         self.timer = 5
         self.timer_running = True
         self.last_record = pygame.time.get_ticks()
-        self.item_manager.reset_turn() # Reset items if entering Question from Wager
+        
+        # Wager 确认后，进入题目，应用装备的道具
+        if self.bag.active_item:
+            self.item_manager.apply_item(self.bag.active_item, row, col)
+            self.bag.active_item = None
+            
         return True
 
     def _check_round_end(self):
-        """Extract round end check logic for reuse in special cases like Skip"""
         self.next_round = False
         if self.player.score == 0:
             self.go_to_gameover_after_result = True
@@ -540,7 +594,7 @@ class Game:
         self.board.mark_answered(row, col)
         self.ui_state = "RESULT"
         self.result_timer = 180
-        self._check_round_end() # Call unified settlement logic
+        self._check_round_end() 
 
     def ui_state_for_drawing(self) -> str:
         return self.ui_state
@@ -578,7 +632,6 @@ class Game:
         screen.blit(c, c.get_rect(center=self.wager_confirm_rect.center))
 
     def draw_board_screen(self):
-        # category text
         for col in range(self.cols):
             rectangle = pygame.Rect(col * self.cell_width, 100, self.cell_width, self.cell_height)
             pygame.draw.rect(screen, BLUE, rectangle)
@@ -587,7 +640,6 @@ class Game:
             category_text_pos = category_text.get_rect(center=rectangle.center)
             screen.blit(category_text, category_text_pos)
 
-        # question text
         for row in range(self.rows):
             y = 100 + self.cell_height * (row + 1)
             for col in range(self.cols):
@@ -620,13 +672,13 @@ class Game:
             q_text_pos = q_text.get_rect(center=(WIDTH // 2, 150 + i * 30))
             screen.blit(q_text, q_text_pos)
 
-        self.option_areas = []  # the list of the area of four option buttons
+        self.option_areas = []  
         option_height = 80
         option_width = 500
         start_y = 280
         space_between = 20
 
-        colors = [BLUE, BLUE, BLUE, BLUE]  # color list for buttons
+        colors = [BLUE, BLUE, BLUE, BLUE]  
         if self.selected_option != -1:
             colors[self.selected_option] = ORANGE
 
@@ -636,7 +688,6 @@ class Game:
             rectangle = pygame.Rect(x, y, option_width, option_height)
             self.option_areas.append(rectangle)
 
-            # --- Draw only gray box and skip text for options eliminated by 50/50 ---
             if i in self.item_manager.eliminated_options:
                 pygame.draw.rect(screen, (30, 30, 30), rectangle) 
                 pygame.draw.rect(screen, (100, 100, 100), rectangle, 3)
@@ -649,8 +700,8 @@ class Game:
             option_text_pos = option_text.get_rect(center=rectangle.center)
             screen.blit(option_text, option_text_pos)
 
-        # Draw item bar at the bottom
-        self.item_manager.draw(screen)
+        # 改为在顶部显示当前生效的Buff
+        self.item_manager.draw_active_buffs(screen)
 
         if (
             (self.current_round == 1 and row == self.double_row_round_1 and col == self.double_col_round_1)
@@ -742,7 +793,6 @@ def run_game():
     best_score = state["best_score"]
     win_streak = state["win_streak"]
 
-    # 1. Run Home UI
     pygame.init()
     clock = pygame.time.Clock()
     screen = pygame.display.set_mode((1200, 800))
@@ -751,17 +801,14 @@ def run_game():
         pygame.quit()
         sys.exit(0)
 
-    # 2. Run new character + username UI
     character_ui = Character(screen)
     user_name, _avatar_path = character_ui.run()
 
-    # 3. Setup Main Game Window
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('Jeopardy!')
     screen.fill(BLACK)
     pygame.display.flip()
     
-    # Initialize Game with data from Login
     game = None
     shop = None
     running = True
@@ -803,8 +850,14 @@ def run_game():
         if base == "BOARD":
             screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW), (20, 20))
             game.draw_board_screen()
+            
+            # 绘制 Shop 按钮
             pygame.draw.rect(screen, (128, 0, 128), SHOP_BTN_RECT)
             screen.blit(pygame.font.Font(None, 24).render("SHOP", True, (255, 255, 255)), (715, 30))
+            # 绘制 Bag 按钮
+            pygame.draw.rect(screen, ORANGE, BAG_BTN_RECT)
+            screen.blit(pygame.font.Font(None, 24).render("BAG", True, (255, 255, 255)), (815, 30))
+            
         elif base == "WAGER":
             screen.blit(LARGE.render(f"Score: {game.player.score}", True, YELLOW), (20, 20))
             game.draw_wager_screen()
@@ -847,12 +900,14 @@ def run_game():
                             game.best_score = best_score
                             game.win_streak = win_streak
                             save_state(best_score, win_streak)
-                            game.gameover_stats_applied = True  # prevent double application of state
+                            game.gameover_stats_applied = True
                         game.ui_state = "GAMEOVER"
                     else:
                         game.ui_state = "BOARD"
         elif base == "SHOP":
             shop.draw()
+        elif base == "BAG":
+            game.bag.draw()
         elif base == "ROUND":
             game.draw_round_screen()            
         elif base == "GAMEOVER":
@@ -903,7 +958,6 @@ def run_game():
                         game.wager_input += event.unicode
                         game.wager_error = ""
                 elif game.ui_state == "QUESTION":
-                    # Add condition: prevent keyboard selection of options eliminated by 50/50
                     if event.key == pygame.K_1 and 0 not in game.item_manager.eliminated_options:
                         game.selected_option = 0
                         game.check_answer()
