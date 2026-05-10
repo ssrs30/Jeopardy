@@ -1,0 +1,1 @@
+Start the game by running "main.py"
