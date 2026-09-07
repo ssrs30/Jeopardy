@@ -8,8 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 
-DEFAULT_BASE_URL = "https://cuhk-apip.azure-api.net/openai-eus2/openai/v1"
-DEFAULT_MODEL = "gpt-5.1"
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_MODEL = "gpt-4o"
 
 
 def _load_env_files() -> None:
