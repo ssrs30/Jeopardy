@@ -1,2 +1,0 @@
-# Use requirements.txt instead of this Anaconda dump.
--r requirements.txt
