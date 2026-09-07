@@ -67,9 +67,7 @@ offline_questions.py    bundled question pack (used when no key is set)
 contestants.py          AI opponents
 Guideline.txt           in-game help text
 API.env.example         key template (copy to API.env)
-UI/                     screens and main loop
-Game Assets/            images
-Sound Effect/           audio
+UI/                     screens, main loop, images, and audio
 ```
 
 ## License
