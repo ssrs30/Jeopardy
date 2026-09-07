@@ -1,0 +1,2 @@
+# Prefer: pip install -r requirements.txt
+# This file is kept only as a pointer. Do not use a full Anaconda export.

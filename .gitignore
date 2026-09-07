@@ -1,0 +1,27 @@
+# Secrets and local config
+API.env
+.env
+*.pem
+
+# Local save data
+stats.json
+
+# Font file cannot be redistributed with this project
+Pix32.ttf
+UI/Pix32.ttf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env/
+*.egg-info/
+.pytest_cache/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
