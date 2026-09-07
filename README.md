@@ -1,6 +1,6 @@
 # Jeopardy
 
-A CUHK AIST1110 group project: a Jeopardy-style quiz game built with Python and pygame.  
+A Jeopardy-style quiz game built with Python and pygame.
 One human player competes against two AI opponents, with a shop, Daily Double, Final Jeopardy, and local save data.
 
 **You can play without an API key.** The game will use the bundled question pack.
@@ -38,13 +38,13 @@ cp API.env.example API.env
 
 ```env
 AZURE_API_KEY=your_key_here
-AZURE_BASE_URL=https://cuhk-apip.azure-api.net/openai-eus2/openai/v1
+AZURE_BASE_URL=https://your-openai-compatible-endpoint/v1
 AZURE_MODEL=gpt-4o
 USE_OFFLINE_QUESTIONS=0
 ```
 
-- CUHK students: request a key from the [CUHK API Portal](https://cuhk-apip.developer.azure-api.net/)
-- Other users: set `AZURE_BASE_URL` and `AZURE_MODEL` to an OpenAI-compatible endpoint you control
+
+- Set `AZURE_BASE_URL` and `AZURE_MODEL` to an OpenAI-compatible endpoint you control
 - To always use the bundled questions: set `USE_OFFLINE_QUESTIONS=1`
 
 Do not commit `API.env`. Do not paste a live key into issues or chat.  
